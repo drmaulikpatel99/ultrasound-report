@@ -11,7 +11,12 @@
     <!-- JSZip for batch downloads -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF-Lib for Client-Side PDF Merging -->
-    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.9/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.9/pdf-lib.min.js"></script>
+    <script>
+        if (typeof PDFLib === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.9/dist/pdf-lib.min.js"><\/script>');
+        }
+    </script>
 
     <script>
         tailwind.config = {
@@ -657,6 +662,17 @@
                         </button>
 
                         <div class="flex items-center gap-2 w-full sm:w-auto">
+                            <button 
+                                type="button"
+                                id="waModalDownloadMergedBtn"
+                                onclick="downloadOrPreviewMergedPdfFromModal()" 
+                                class="px-3.5 py-2.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+                                title="Download or preview PDF file"
+                            >
+                                <i class="fa-solid fa-file-arrow-down text-teal-700"></i>
+                                <span>Save PDF</span>
+                            </button>
+
                             <button 
                                 onclick="copyWhatsAppModalText()" 
                                 class="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all"
@@ -2823,6 +2839,128 @@ Baby Scan Fetal Medicine Center`;
             }
         }
 
+        // Robust PDF merger using PDFLib with fast parallel fetching & encryption bypassing
+        async function buildMergedPdfBlob(patientGroup, reportsToShare) {
+            const PDFLibObj = window.PDFLib || (typeof PDFLib !== "undefined" ? PDFLib : null);
+            if (!PDFLibObj || !PDFLibObj.PDFDocument) {
+                throw new Error("PDF processing engine is still initializing. Please retry in a moment.");
+            }
+
+            const sortedReports = [...reportsToShare].sort(compareReportsByClinicalOrder);
+            
+            // Parallel fetch all PDF byte streams concurrently for max speed and keeping user gesture alive
+            const fetchPromises = sortedReports.map(async (report) => {
+                if (!report.storage_path) return null;
+                try {
+                    const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
+                    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    });
+                    if (!res.ok) {
+                        console.warn(`Storage fetch failed for ${report.storage_path}: HTTP ${res.status}`);
+                        return null;
+                    }
+                    return await res.arrayBuffer();
+                } catch (fetchErr) {
+                    console.warn("Storage network error:", fetchErr);
+                    return null;
+                }
+            });
+
+            const pdfBuffers = await Promise.all(fetchPromises);
+            const validBuffers = pdfBuffers.filter(b => b !== null && b.byteLength > 0);
+
+            if (validBuffers.length === 0) {
+                throw new Error("No PDF scans could be downloaded from cloud storage.");
+            }
+
+            const cleanPatientName = (patientGroup.patient_name || "Patient").replace(/[^a-zA-Z0-9]/g, '_');
+            const fileId = (patientGroup.file_id && patientGroup.file_id !== "—") ? patientGroup.file_id : "REPORT";
+
+            // If only 1 PDF, return its single blob
+            if (validBuffers.length === 1) {
+                const fileName = `${fileId}_${cleanPatientName}_Report.pdf`;
+                const blob = new Blob([validBuffers[0]], { type: "application/pdf" });
+                return { blob, fileName, pageCount: 1 };
+            }
+
+            // Create merged document and assemble pages in order
+            const mergedDoc = await PDFLibObj.PDFDocument.create();
+            let totalPages = 0;
+
+            for (const buf of validBuffers) {
+                try {
+                    const srcDoc = await PDFLibObj.PDFDocument.load(buf, { ignoreEncryption: true });
+                    const pageIndices = srcDoc.getPageIndices();
+                    const copiedPages = await mergedDoc.copyPages(srcDoc, pageIndices);
+                    copiedPages.forEach(p => mergedDoc.addPage(p));
+                    totalPages += copiedPages.length;
+                } catch (loadErr) {
+                    console.warn("PDF load/copy page error:", loadErr);
+                }
+            }
+
+            if (totalPages === 0) {
+                throw new Error("Unable to extract pages from the selected PDF documents.");
+            }
+
+            const mergedBytes = await mergedDoc.save();
+            const fileName = `${fileId}_${cleanPatientName}_Complete_Report.pdf`;
+            const blob = new Blob([mergedBytes], { type: "application/pdf" });
+
+            return { blob, fileName, pageCount: totalPages };
+        }
+
+        // Direct Download or Safari Native PDF Viewer for Merged Report
+        async function downloadOrPreviewMergedPdfFromModal() {
+            if (!currentWhatsAppPatientGroup) return;
+            const btn = document.getElementById("waModalDownloadMergedBtn");
+            const origHtml = btn ? btn.innerHTML : "";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-teal-700"></i>`;
+            }
+
+            try {
+                const selectedReports = getSelectedModalReports();
+                if (selectedReports.length === 0) {
+                    showToast("Please select at least 1 PDF.", true);
+                    return;
+                }
+
+                showToast("Generating combined PDF...", false);
+                const { blob, fileName } = await buildMergedPdfBlob(currentWhatsAppPatientGroup, selectedReports);
+                const url = URL.createObjectURL(blob);
+
+                // Check iOS Safari to open viewer smoothly
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                if (isIOS) {
+                    window.open(url, "_blank");
+                } else {
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
+
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                showToast(`Ready: ${fileName}`);
+            } catch (err) {
+                console.error("PDF generation error:", err);
+                showToast(err.message || "Failed to generate combined PDF", true);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            }
+        }
+
         async function shareOrOpenWhatsApp(patientGroup, doctorName, phone, btnElement = null, reportsOverride = null) {
             let origHtml = "";
             if (btnElement) {
@@ -2846,7 +2984,16 @@ Baby Scan Fetal Medicine Center`;
                 const msg = generateWhatsAppMessage(patientGroup, doctorName, reportsToShare);
 
                 const isMergeEnabled = waModalMergeToggle ? waModalMergeToggle.checked : true;
-                const shouldMerge = isMergeEnabled && reportsToShare.length > 1 && typeof PDFLib !== "undefined";
+                const shouldMerge = isMergeEnabled && reportsToShare.length > 1;
+
+                // Pre-copy WhatsApp text to clipboard so it is ready on mobile clipboard
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(msg);
+                    }
+                } catch (clipErr) {
+                    // non-blocking
+                }
 
                 // 2. Check if Mobile Native Share with Files is supported (iOS Safari & Android Chrome)
                 if (typeof navigator !== "undefined" && typeof navigator.share === "function" && reportsToShare.length > 0) {
@@ -2858,95 +3005,102 @@ Baby Scan Fetal Medicine Center`;
                             btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Merging ${reportsToShare.length} PDFs...`;
                         }
                         try {
-                            const mergedDoc = await PDFLib.PDFDocument.create();
-                            let pagesAdded = 0;
-
-                            for (const report of reportsToShare) {
-                                if (report.storage_path) {
-                                    try {
-                                        const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
-                                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
-                                            headers: {
-                                                "apikey": SUPABASE_ANON_KEY,
-                                                "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
-                                            }
-                                        });
-                                        if (res.ok) {
-                                            const pdfBytes = await res.arrayBuffer();
-                                            const srcDoc = await PDFLib.PDFDocument.load(pdfBytes);
-                                            const copiedPages = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
-                                            copiedPages.forEach(page => mergedDoc.addPage(page));
-                                            pagesAdded += copiedPages.length;
-                                        }
-                                    } catch (fetchErr) {
-                                        console.warn("Could not load report for merging:", fetchErr);
-                                    }
-                                }
-                            }
-
-                            if (pagesAdded > 0) {
-                                const mergedPdfBytes = await mergedDoc.save();
-                                const cleanPatientName = (patientGroup.patient_name || "Patient").replace(/[^a-zA-Z0-9]/g, '_');
-                                const fileId = (patientGroup.file_id && patientGroup.file_id !== "—") ? patientGroup.file_id : "REPORT";
-                                const mergedFileName = `${fileId}_${cleanPatientName}_Complete_Report.pdf`;
-                                const mergedFile = new File([mergedPdfBytes], mergedFileName, { type: "application/pdf" });
-                                filesToShare.push(mergedFile);
-                            }
+                            const { blob, fileName } = await buildMergedPdfBlob(patientGroup, reportsToShare);
+                            const mergedFile = new File([blob], fileName, { type: "application/pdf", lastModified: Date.now() });
+                            filesToShare.push(mergedFile);
                         } catch (mergeErr) {
-                            console.warn("PDF merge failed, falling back to separate files:", mergeErr);
+                            console.warn("PDF merge error, falling back to separate files:", mergeErr);
                         }
                     }
 
                     // Option B: Individual separate files (if merge disabled or fallback)
                     if (filesToShare.length === 0) {
-                        for (const report of reportsToShare) {
-                            if (report.storage_path) {
-                                try {
-                                    const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
-                                    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
-                                        headers: {
-                                            "apikey": SUPABASE_ANON_KEY,
-                                            "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
-                                        }
-                                    });
-                                    if (res.ok) {
-                                        const blob = await res.blob();
-                                        const safeName = report.filename || `${patientGroup.file_id}_${(report.study_type || 'Report').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-                                        const fileObj = new File([blob], safeName, { type: "application/pdf" });
-                                        filesToShare.push(fileObj);
+                        const separatePromises = reportsToShare.map(async (report) => {
+                            if (!report.storage_path) return null;
+                            try {
+                                const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
+                                const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                                    headers: {
+                                        "apikey": SUPABASE_ANON_KEY,
+                                        "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
                                     }
-                                } catch (fetchErr) {
-                                    console.warn("Could not fetch report for native share:", fetchErr);
+                                });
+                                if (res.ok) {
+                                    const blob = await res.blob();
+                                    const safeName = report.filename || `${patientGroup.file_id}_${(report.study_type || 'Report').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                                    return new File([blob], safeName, { type: "application/pdf", lastModified: Date.now() });
                                 }
+                            } catch (fetchErr) {
+                                console.warn("Could not fetch report for native share:", fetchErr);
                             }
-                        }
+                            return null;
+                        });
+
+                        const fetchedFiles = await Promise.all(separatePromises);
+                        fetchedFiles.forEach(f => { if (f) filesToShare.push(f); });
                     }
 
                     // If files were loaded and browser supports file sharing
                     if (filesToShare.length > 0) {
-                        const sharePayload = {
+                        let shared = false;
+
+                        // Attempt 1: Full payload (Files + Text + Title) - standard Android Chrome & modern WebKit
+                        const fullPayload = {
                             title: `Ultrasound Report - ${patientGroup.patient_name}`,
                             text: msg,
                             files: filesToShare
                         };
 
-                        if (typeof navigator.canShare === "function" && navigator.canShare(sharePayload)) {
+                        if (typeof navigator.canShare === "function" && navigator.canShare(fullPayload)) {
                             try {
-                                await navigator.share(sharePayload);
-                                const sharedDesc = (shouldMerge && filesToShare.length === 1 && reportsToShare.length > 1) 
-                                    ? `Combined PDF (${reportsToShare.length} scans)` 
-                                    : `${filesToShare.length} PDF(s)`;
-                                showToast(`Shared ${sharedDesc} for ${patientGroup.patient_name}`);
-                                if (whatsappShareModal && !whatsappShareModal.classList.contains("hidden")) {
-                                    closeWhatsAppModal();
-                                }
-                                return;
+                                await navigator.share(fullPayload);
+                                shared = true;
                             } catch (shareErr) {
                                 if (shareErr.name === "AbortError") {
                                     return; // User dismissed share sheet
                                 }
-                                console.warn("Navigator share fallback:", shareErr);
+                                console.warn("Full payload share failed, trying files-only payload:", shareErr);
                             }
+                        }
+
+                        // Attempt 2 (iOS Safari standard): Share files-only payload without conflicting text parameter
+                        if (!shared) {
+                            const filesOnlyPayload = { files: filesToShare };
+                            if (typeof navigator.canShare === "function" && navigator.canShare(filesOnlyPayload)) {
+                                try {
+                                    await navigator.share(filesOnlyPayload);
+                                    shared = true;
+                                } catch (shareErr) {
+                                    if (shareErr.name === "AbortError") {
+                                        return; // User dismissed share sheet
+                                    }
+                                    console.warn("Files-only payload share failed:", shareErr);
+                                }
+                            }
+                        }
+
+                        // Attempt 3: Direct share call with files array
+                        if (!shared && typeof navigator.share === "function") {
+                            try {
+                                await navigator.share({ files: filesToShare });
+                                shared = true;
+                            } catch (shareErr) {
+                                if (shareErr.name === "AbortError") {
+                                    return;
+                                }
+                                console.warn("Direct files share failed:", shareErr);
+                            }
+                        }
+
+                        if (shared) {
+                            const sharedDesc = (shouldMerge && filesToShare.length === 1 && reportsToShare.length > 1) 
+                                ? `Combined PDF (${reportsToShare.length} scans)` 
+                                : `${filesToShare.length} PDF(s)`;
+                            showToast(`Shared ${sharedDesc}! Text ready to paste.`);
+                            if (whatsappShareModal && !whatsappShareModal.classList.contains("hidden")) {
+                                closeWhatsAppModal();
+                            }
+                            return;
                         }
                     }
                 }
