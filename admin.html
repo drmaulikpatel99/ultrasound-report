@@ -280,42 +280,24 @@
                 </div>
             </div>
 
-            <!-- Reports Table Section -->
-            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <!-- Reports Grouped Section -->
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden mb-8">
                 <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                         <h3 class="text-lg font-bold text-slate-900" id="tableHeaderTitle">Ultrasound Reports</h3>
-                        <p class="text-xs text-slate-500 mt-0.5" id="tableHeaderSubtitle">Showing records for selected date filter</p>
+                        <p class="text-xs text-slate-500 mt-0.5" id="tableHeaderSubtitle">Showing patient records grouped by name & ID</p>
                     </div>
-                    <span id="filteredBadge" class="text-xs bg-slate-100 text-slate-700 font-semibold px-3 py-1 rounded-full border border-slate-200 self-start">
-                        0 records found
+                    <span id="filteredBadge" class="text-xs bg-babyscan-50 text-babyscan-800 font-bold px-3 py-1.5 rounded-full border border-babyscan-200 self-start">
+                        0 patients found
                     </span>
                 </div>
 
-                <!-- Table Content -->
-                <div class="overflow-x-auto custom-scrollbar">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                                <th class="py-3.5 px-6">Patient ID</th>
-                                <th class="py-3.5 px-6">Patient Name</th>
-                                <th class="py-3.5 px-6">Study / Scan Type</th>
-                                <th class="py-3.5 px-6">Visit Date</th>
-                                <th class="py-3.5 px-6">Uploaded Time</th>
-                                <th class="py-3.5 px-6">Patient Status</th>
-                                <th class="py-3.5 px-6 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reportsTableBody" class="divide-y divide-slate-100 font-medium">
-                            <!-- Injected by JavaScript -->
-                            <tr>
-                                <td colspan="7" class="py-12 text-center text-slate-400">
-                                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
-                                    <p>Loading reports...</p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <!-- Patient Groups Container -->
+                <div class="p-6 space-y-4" id="patientGroupsContainer">
+                    <div class="py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
+                        <p class="text-xs font-semibold">Loading ultrasound reports...</p>
+                    </div>
                 </div>
 
                 <!-- Empty State -->
@@ -350,6 +332,7 @@
         let currentSession = null;
         let allReportsCache = [];
         let filteredReports = [];
+        window.currentPatientGroups = [];
 
         // DOM elements
         const loginSection = document.getElementById("loginSection");
@@ -364,7 +347,7 @@
 
         const datePicker = document.getElementById("datePicker");
         const searchFilter = document.getElementById("searchFilter");
-        const reportsTableBody = document.getElementById("reportsTableBody");
+        const patientGroupsContainer = document.getElementById("patientGroupsContainer");
         const emptyState = document.getElementById("emptyState");
         const filteredBadge = document.getElementById("filteredBadge");
         const tableHeaderTitle = document.getElementById("tableHeaderTitle");
@@ -505,13 +488,11 @@
             }
 
             refreshIcon.classList.add("fa-spin");
-            reportsTableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="py-12 text-center text-slate-400">
-                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
-                        <p>Fetching latest reports from Supabase...</p>
-                    </td>
-                </tr>
+            patientGroupsContainer.innerHTML = `
+                <div class="py-12 text-center text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
+                    <p class="text-xs font-semibold">Fetching latest patient reports from Supabase...</p>
+                </div>
             `;
 
             try {
@@ -540,18 +521,16 @@
                 applyFilterAndRender();
 
                 if (showToastNotice) {
-                    showToast(`Refreshed! Found ${allReportsCache.length} active reports.`);
+                    showToast(`Refreshed! Loaded ${allReportsCache.length} scans from cloud.`);
                 }
 
             } catch (err) {
                 console.error("Load reports error:", err);
-                reportsTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="7" class="py-8 text-center text-red-600 font-bold">
-                            <i class="fa-solid fa-triangle-exclamation mb-1 text-lg"></i>
-                            <p>Failed to load reports: ${err.message}</p>
-                        </td>
-                    </tr>
+                patientGroupsContainer.innerHTML = `
+                    <div class="py-8 text-center text-red-600 font-bold">
+                        <i class="fa-solid fa-triangle-exclamation mb-1 text-lg"></i>
+                        <p>Failed to load reports: ${err.message}</p>
+                    </div>
                 `;
             } finally {
                 refreshIcon.classList.remove("fa-spin");
@@ -590,7 +569,44 @@
             applyFilterAndRender();
         }
 
-        // 7. Filter and Render Logic
+        // 7. Group Reports by Patient Name & ID
+        function groupReportsByPatient(reports) {
+            const groupsMap = new Map();
+
+            reports.forEach(r => {
+                const fileId = (r.file_id || "UNKNOWN").trim().toUpperCase();
+                const rawName = (r.full_name || `${r.first_name || ""} ${r.last_name || ""}`).trim();
+                const patientName = rawName || "Unknown Patient";
+                const groupKey = `${fileId}___${patientName.toLowerCase()}`;
+
+                if (!groupsMap.has(groupKey)) {
+                    groupsMap.set(groupKey, {
+                        file_id: fileId,
+                        patient_name: patientName,
+                        first_name: r.first_name || "",
+                        last_name: r.last_name || "",
+                        visit_date: r.visit_date || "—",
+                        created_at: r.created_at,
+                        reports: []
+                    });
+                }
+
+                const group = groupsMap.get(groupKey);
+                group.reports.push(r);
+
+                // Track latest created_at and preferred visit date
+                if (new Date(r.created_at) > new Date(group.created_at)) {
+                    group.created_at = r.created_at;
+                }
+                if (r.visit_date && r.visit_date !== "—") {
+                    group.visit_date = r.visit_date;
+                }
+            });
+
+            return Array.from(groupsMap.values());
+        }
+
+        // 8. Filter and Render Logic
         function applyFilterAndRender() {
             const selectedDate = datePicker.value; // 'YYYY-MM-DD' or ''
             const searchText = (searchFilter.value || "").trim().toLowerCase();
@@ -609,10 +625,10 @@
                     return false;
                 });
                 tableHeaderTitle.textContent = `Ultrasound Reports (${selDay}/${selMonth}/${selYear})`;
-                tableHeaderSubtitle.textContent = `Viewing scans performed on ${selDay}/${selMonth}/${selYear}`;
+                tableHeaderSubtitle.textContent = `Viewing patient records from ${selDay}/${selMonth}/${selYear}`;
             } else {
                 tableHeaderTitle.textContent = `All Ultrasound Reports (30 Days)`;
-                tableHeaderSubtitle.textContent = `Viewing entire active 30-day cloud archive`;
+                tableHeaderSubtitle.textContent = `Viewing patient records across active 30-day cloud archive`;
             }
 
             // Filter by Search text
@@ -626,82 +642,191 @@
             }
 
             filteredReports = list;
-            statDateCount.textContent = list.length;
-            filteredBadge.textContent = `${list.length} scan${list.length === 1 ? '' : 's'} found`;
+            const patientGroups = groupReportsByPatient(list);
+            window.currentPatientGroups = patientGroups;
 
-            renderTableRows(list);
+            statDateCount.textContent = patientGroups.length;
+            filteredBadge.textContent = `${patientGroups.length} patient${patientGroups.length === 1 ? '' : 's'} (${list.length} scan${list.length === 1 ? '' : 's'})`;
+
+            renderPatientGroups(patientGroups);
         }
 
-        function renderTableRows(reports) {
-            if (reports.length === 0) {
-                reportsTableBody.innerHTML = "";
+        // Visual helpers for study categories
+        function getStudyBadgeClass(studyType) {
+            const s = (studyType || "").toUpperCase();
+            if (s.includes("3D") || s.includes("4D")) return "bg-rose-50 text-rose-800 border border-rose-200/80";
+            if (s.includes("2D")) return "bg-purple-50 text-purple-800 border border-purple-200/80";
+            if (s.includes("ECHO")) return "bg-indigo-50 text-indigo-800 border border-indigo-200/80";
+            if (s.includes("DOPPLER")) return "bg-blue-50 text-blue-800 border border-blue-200/80";
+            return "bg-teal-50 text-teal-800 border border-teal-200/80";
+        }
+
+        function getStudyIcon(studyType) {
+            const s = (studyType || "").toUpperCase();
+            if (s.includes("3D") || s.includes("4D")) return `<i class="fa-solid fa-cube text-rose-600"></i>`;
+            if (s.includes("2D")) return `<i class="fa-solid fa-images text-purple-600"></i>`;
+            if (s.includes("ECHO")) return `<i class="fa-solid fa-heart-pulse text-indigo-600"></i>`;
+            if (s.includes("DOPPLER")) return `<i class="fa-solid fa-wave-square text-blue-600"></i>`;
+            return `<i class="fa-solid fa-file-medical text-teal-600"></i>`;
+        }
+
+        function getStudyTypeLabel(studyType) {
+            const s = (studyType || "").toUpperCase();
+            if (s.includes("3D") || s.includes("4D")) return "3D Fetal Photo";
+            if (s.includes("2D")) return "2D Image Sheet";
+            if (s.includes("ECHO")) return "Fetal Echo";
+            if (s.includes("DOPPLER")) return "Doppler Scan";
+            return "Diagnostic Report";
+        }
+
+        function formatUploadDateTime(isoStr) {
+            if (!isoStr) return "—";
+            try {
+                const d = new Date(isoStr);
+                const datePart = d.toLocaleDateString([], { day: '2-digit', month: 'short' });
+                const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return `${datePart}, ${timePart}`;
+            } catch (e) {
+                return isoStr;
+            }
+        }
+
+        function getInitials(name) {
+            if (!name) return "P";
+            const cleaned = name.replace(/^(mrs\.?|mr\.?|ms\.?|dr\.?)\s+/i, "").trim();
+            const parts = cleaned.split(/\s+/).filter(Boolean);
+            if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+            if (parts.length >= 2) return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+            return "P";
+        }
+
+        // 9. Render Patient Groups
+        function renderPatientGroups(groups) {
+            if (groups.length === 0) {
+                patientGroupsContainer.innerHTML = "";
                 emptyState.classList.remove("hidden");
                 return;
             }
 
             emptyState.classList.add("hidden");
-            reportsTableBody.innerHTML = "";
+            patientGroupsContainer.innerHTML = "";
 
             const now = new Date();
             const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-            reports.forEach((r, idx) => {
-                const tr = document.createElement("tr");
-                tr.className = "hover:bg-slate-50 transition-colors";
+            groups.forEach((group, pIdx) => {
+                const is24hActive = new Date(group.created_at) >= twentyFourHoursAgo;
+                const initials = getInitials(group.patient_name);
 
-                const is24hActive = new Date(r.created_at) >= twentyFourHoursAgo;
-                const createdDate = new Date(r.created_at);
-                const timeFormatted = createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateFormatted = createdDate.toLocaleDateString([], { day: '2-digit', month: 'short' });
+                const card = document.createElement("div");
+                card.className = "bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden hover:shadow-md transition-all";
 
-                tr.innerHTML = `
-                    <td class="py-3.5 px-6 font-bold text-babyscan-800">${escapeHTML(r.file_id)}</td>
-                    <td class="py-3.5 px-6 text-slate-900 font-bold">${escapeHTML(r.full_name || `${r.first_name} ${r.last_name}`)}</td>
-                    <td class="py-3.5 px-6">
-                        <span class="inline-block px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 font-bold border border-teal-200/60 text-[11px]">
-                            ${escapeHTML(r.study_type || "ULTRASOUND SCAN")}
-                        </span>
-                    </td>
-                    <td class="py-3.5 px-6 text-slate-600">${escapeHTML(r.visit_date || "—")}</td>
-                    <td class="py-3.5 px-6 text-slate-500 text-[11px]">${dateFormatted}, ${timeFormatted}</td>
-                    <td class="py-3.5 px-6">
-                        ${is24hActive 
-                            ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-circle text-[6px]"></i> Patient Active</span>` 
-                            : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200"><i class="fa-solid fa-lock text-[8px]"></i> Doctor Only</span>`
-                        }
-                    </td>
-                    <td class="py-3.5 px-6 text-right">
-                        <div class="inline-flex items-center gap-1.5">
-                            <!-- Download PDF Button -->
+                card.innerHTML = `
+                    <!-- Patient Header Banner -->
+                    <div class="p-4 sm:p-5 bg-gradient-to-r from-slate-50 via-slate-50 to-white border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-2xl bg-babyscan-100 text-babyscan-800 flex items-center justify-center font-extrabold text-base shadow-xs shrink-0">
+                                ${initials}
+                            </div>
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h4 class="font-extrabold text-base text-slate-900">${escapeHTML(group.patient_name)}</h4>
+                                    <span class="px-2.5 py-0.5 rounded-lg bg-babyscan-100 text-babyscan-800 font-extrabold text-xs tracking-wide">
+                                        ${escapeHTML(group.file_id)}
+                                    </span>
+                                    ${is24hActive 
+                                        ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-circle text-[6px]"></i> Patient Active</span>` 
+                                        : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200"><i class="fa-solid fa-lock text-[8px]"></i> Doctor Archive</span>`
+                                    }
+                                </div>
+                                <div class="flex flex-wrap items-center gap-4 mt-1 text-xs text-slate-500 font-medium">
+                                    <span><i class="fa-regular fa-calendar text-slate-400 mr-1"></i> Visit: <strong class="text-slate-700 font-bold">${escapeHTML(group.visit_date)}</strong></span>
+                                    <span><i class="fa-solid fa-layer-group text-slate-400 mr-1"></i> Total: <strong class="text-babyscan-800 font-bold">${group.reports.length}</strong> ${group.reports.length === 1 ? 'Scan / Sheet' : 'Scans & Sheets'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Patient Group Level Actions -->
+                        <div class="flex items-center gap-2 self-end md:self-auto pt-2 md:pt-0">
+                            <!-- Download All Patient Scans as ZIP -->
                             <button 
-                                id="btn-dl-${idx}"
-                                onclick="downloadAdminReport('${r.storage_path}', '${escapeHTML(r.filename)}', 'btn-dl-${idx}')"
-                                class="px-2.5 py-1.5 rounded-xl bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold border border-babyscan-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer"
-                                title="Download PDF"
+                                id="btn-zip-patient-${pIdx}"
+                                onclick="downloadPatientZipByIndex(${pIdx}, 'btn-zip-patient-${pIdx}')"
+                                class="px-3.5 py-2 rounded-xl bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold border border-babyscan-200 text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                title="Download all reports & images for this patient as a ZIP"
                             >
-                                <i class="fa-solid fa-download"></i>
-                                <span>PDF</span>
+                                <i class="fa-solid fa-file-zipper text-babyscan-600"></i>
+                                <span>Download ZIP (${group.reports.length})</span>
                             </button>
 
-                            <!-- Delete Report Button -->
+                            <!-- Delete All Reports for this Patient -->
                             <button 
-                                id="btn-del-${idx}"
-                                onclick="deleteReport('${r.id}', '${r.storage_path}', '${escapeHTML(r.file_id)}', '${escapeHTML(r.full_name || r.first_name)}', '${escapeHTML(r.study_type || 'Scan')}', 'btn-del-${idx}')"
-                                class="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer"
-                                title="Delete Report from Cloud"
+                                id="btn-del-patient-${pIdx}"
+                                onclick="deletePatientGroupByIndex(${pIdx}, 'btn-del-patient-${pIdx}')"
+                                class="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                title="Delete all reports & records for this patient from cloud"
                             >
                                 <i class="fa-solid fa-trash-can"></i>
-                                <span>Delete</span>
+                                <span>Delete Patient</span>
                             </button>
                         </div>
-                    </td>
+                    </div>
+
+                    <!-- Individual Scans List -->
+                    <div class="divide-y divide-slate-100">
+                        ${group.reports.map((r, rIdx) => `
+                            <div class="p-3.5 sm:px-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/80 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center text-sm shrink-0">
+                                        ${getStudyIcon(r.study_type)}
+                                    </div>
+                                    <div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <h5 class="font-bold text-xs text-slate-800">${escapeHTML(r.study_type || 'Ultrasound Scan')}</h5>
+                                            <span class="${getStudyBadgeClass(r.study_type)} text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                                                ${getStudyTypeLabel(r.study_type)}
+                                            </span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-0.5">
+                                            <span>Uploaded: <strong class="text-slate-600">${formatUploadDateTime(r.created_at)}</strong></span>
+                                            ${r.filename ? ` • <span class="text-slate-400 font-mono text-[10px]">${escapeHTML(r.filename)}</span>` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-1.5 self-end sm:self-auto">
+                                    <!-- Download Single PDF -->
+                                    <button 
+                                        id="btn-dl-${pIdx}-${rIdx}"
+                                        onclick="downloadAdminReport('${r.storage_path}', '${escapeHTML(r.filename)}', 'btn-dl-${pIdx}-${rIdx}')"
+                                        class="px-2.5 py-1.5 rounded-lg bg-white hover:bg-babyscan-50 text-babyscan-800 font-bold border border-slate-200 hover:border-babyscan-300 transition-all flex items-center gap-1 text-[11px] cursor-pointer shadow-2xs"
+                                        title="Download PDF"
+                                    >
+                                        <i class="fa-solid fa-download text-xs text-babyscan-600"></i>
+                                        <span>PDF</span>
+                                    </button>
+
+                                    <!-- Delete Single Scan -->
+                                    <button 
+                                        id="btn-del-${pIdx}-${rIdx}"
+                                        onclick="deleteReport('${r.id}', '${r.storage_path}', '${escapeHTML(group.file_id)}', '${escapeHTML(group.patient_name)}', '${escapeHTML(r.study_type || 'Scan')}', 'btn-del-${pIdx}-${rIdx}')"
+                                        class="px-2.5 py-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 font-bold border border-slate-200 hover:border-red-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer shadow-2xs"
+                                        title="Delete Scan from Cloud"
+                                    >
+                                        <i class="fa-solid fa-trash-can text-xs text-red-500"></i>
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
                 `;
 
-                reportsTableBody.appendChild(tr);
+                patientGroupsContainer.appendChild(card);
             });
         }
 
-        // 8. Download Single PDF
+        // 10. Download Single PDF
         async function downloadAdminReport(storagePath, filename, btnId) {
             const btn = document.getElementById(btnId);
             const orig = btn ? btn.innerHTML : "";
@@ -745,13 +870,81 @@
             }
         }
 
-        // 9. Delete Single Report from Cloud
+        // 11. Download Patient ZIP (All scans/images for a single patient)
+        async function downloadPatientZipByIndex(pIdx, btnId) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group || !group.reports || group.reports.length === 0) return;
+
+            const btn = document.getElementById(btnId);
+            const origHtml = btn ? btn.innerHTML : "";
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Zipping...</span>`;
+                btn.disabled = true;
+            }
+
+            try {
+                if (typeof JSZip === "undefined") {
+                    throw new Error("ZIP library is loading. Please try again.");
+                }
+
+                const zip = new JSZip();
+                let addedCount = 0;
+
+                for (const report of group.reports) {
+                    try {
+                        const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
+                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                            headers: {
+                                "apikey": SUPABASE_ANON_KEY,
+                                "Authorization": `Bearer ${currentSession.access_token}`
+                            }
+                        });
+                        if (res.ok) {
+                            const blob = await res.blob();
+                            const fname = report.filename || `${report.file_id}_${report.study_type}.pdf`;
+                            zip.file(fname, blob);
+                            addedCount++;
+                        }
+                    } catch (e) {
+                        console.warn("Could not fetch file for ZIP:", report.filename, e);
+                    }
+                }
+
+                if (addedCount === 0) {
+                    throw new Error("Could not fetch report files.");
+                }
+
+                const content = await zip.generateAsync({ type: "blob" });
+                const url = window.URL.createObjectURL(content);
+                const a = document.createElement("a");
+                a.href = url;
+                const cleanName = group.patient_name.replace(/[^a-zA-Z0-9]/g, "_");
+                a.download = `${group.file_id}_${cleanName}_All_Reports.zip`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                }, 2000);
+
+            } catch (err) {
+                console.error("Patient ZIP error:", err);
+                alert("Download ZIP failed: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        // 12. Delete Single Report from Cloud
         async function deleteReport(reportId, storagePath, fileId, patientName, studyType, btnId) {
             const confirmed = confirm(
                 `Are you sure you want to delete this report?\n\n` +
                 `Patient: ${patientName} (${fileId})\n` +
                 `Study: ${studyType}\n\n` +
-                `This will permanently delete the report PDF from cloud storage and remove it from database.`
+                `This will permanently delete the report PDF from cloud storage and remove it from the database.`
             );
             if (!confirmed) return;
 
@@ -794,7 +987,7 @@
                 allReportsCache = allReportsCache.filter(r => r.id !== reportId);
                 updateOverallStats();
                 applyFilterAndRender();
-                showToast(`Deleted report for ${patientName} (${studyType})`);
+                showToast(`Deleted ${studyType} for ${patientName}`);
 
             } catch (err) {
                 console.error("Delete error:", err);
@@ -807,7 +1000,79 @@
             }
         }
 
-        // 10. Batch Download Filtered Reports as ZIP
+        // 13. Delete Entire Patient Record (All scans and sheets for this patient)
+        async function deletePatientGroupByIndex(pIdx, btnId) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group || !group.reports || group.reports.length === 0) return;
+
+            const confirmed = confirm(
+                `⚠️ WARNING: DELETE ENTIRE PATIENT RECORD?\n\n` +
+                `Patient: ${group.patient_name} (${group.file_id})\n` +
+                `Total Scans: ${group.reports.length}\n\n` +
+                `This will permanently delete ALL ${group.reports.length} report(s) and image sheet(s) for this patient from cloud storage and remove them from the database.`
+            );
+            if (!confirmed) return;
+
+            const btn = document.getElementById(btnId);
+            const origHtml = btn ? btn.innerHTML : "";
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                btn.disabled = true;
+            }
+
+            try {
+                // Delete all files from Supabase Storage
+                for (const report of group.reports) {
+                    if (report.storage_path) {
+                        try {
+                            const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
+                            await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                                method: "DELETE",
+                                headers: {
+                                    "apikey": SUPABASE_ANON_KEY,
+                                    "Authorization": `Bearer ${currentSession.access_token}`
+                                }
+                            });
+                        } catch (e) {
+                            console.warn("Storage deletion error:", report.storage_path, e);
+                        }
+                    }
+                }
+
+                // Delete all records for this patient from PostgreSQL
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?file_id=eq.${encodeURIComponent(group.file_id)}`, {
+                    method: "DELETE",
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${currentSession.access_token}`,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+
+                // Remove from local cache and refresh
+                const reportIds = new Set(group.reports.map(r => r.id));
+                allReportsCache = allReportsCache.filter(r => !reportIds.has(r.id));
+                updateOverallStats();
+                applyFilterAndRender();
+                showToast(`Successfully deleted all records for ${group.patient_name} (${group.file_id})`);
+
+            } catch (err) {
+                console.error("Delete patient error:", err);
+                alert("Could not delete patient: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        // 14. Batch Download Filtered Reports as Day ZIP
         async function downloadFilteredZip() {
             if (!filteredReports || filteredReports.length === 0) {
                 alert("No reports available for the current filter to download.");
