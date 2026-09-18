@@ -634,16 +634,33 @@
                     group.patient_name = rawName;
                 }
 
-                // Deduplicate 2D image sheet if duplicate entries exist for this patient
-                if (r.study_type === "2D ULTRASOUND IMAGES") {
-                    const existing2DIdx = group.reports.findIndex(item => item.study_type === "2D ULTRASOUND IMAGES");
-                    if (existing2DIdx >= 0) {
-                        // Keep the newer copy
-                        if (new Date(r.created_at) > new Date(group.reports[existing2DIdx].created_at)) {
-                            group.reports[existing2DIdx] = r;
-                        }
-                        return;
+                // Deduplicate scans & image sheets (prevents duplicate 3D/4D sheets, 2D sheets, or duplicate reports)
+                const rStudy = (r.study_type || "").trim().toUpperCase();
+                const existingIdx = group.reports.findIndex(item => {
+                    if (r.storage_path && item.storage_path && r.storage_path === item.storage_path) return true;
+                    if (r.filename && item.filename && r.filename === item.filename) return true;
+
+                    const itemStudy = (item.study_type || "").trim().toUpperCase();
+                    if (rStudy === itemStudy) return true;
+
+                    // 3D/4D multi-sheet normalization check: Treat un-numbered '3D/4D FETAL IMAGES' and '(Sheet 1)' as same sheet
+                    const is3d_r = rStudy.includes("3D") || rStudy.includes("4D");
+                    const is3d_item = itemStudy.includes("3D") || itemStudy.includes("4D");
+                    if (is3d_r && is3d_item) {
+                        const num_r = (rStudy.match(/sheet\s*(\d+)/i) || [])[1] || "1";
+                        const num_item = (itemStudy.match(/sheet\s*(\d+)/i) || [])[1] || "1";
+                        if (num_r === num_item) return true;
                     }
+
+                    return false;
+                });
+
+                if (existingIdx >= 0) {
+                    // Keep the newer upload
+                    if (new Date(r.created_at) > new Date(group.reports[existingIdx].created_at)) {
+                        group.reports[existingIdx] = r;
+                    }
+                    return;
                 }
 
                 group.reports.push(r);
