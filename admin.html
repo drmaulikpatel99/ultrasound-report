@@ -591,7 +591,7 @@
                                 class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg transition-all"
                             >
                                 <i class="fa-brands fa-whatsapp text-base"></i>
-                                <span>Send on WhatsApp</span>
+                                <span>Share PDF on WhatsApp</span>
                             </button>
                         </div>
                     </div>
@@ -2356,23 +2356,103 @@ Baby Scan Fetal Medicine Center`;
             waModalMessagePreview.textContent = msg;
         }
 
+        async function shareOrOpenWhatsApp(patientGroup, doctorName, phone, btnElement = null) {
+            let origHtml = "";
+            if (btnElement) {
+                origHtml = btnElement.innerHTML;
+                btnElement.disabled = true;
+                btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Preparing PDF...`;
+            }
+
+            try {
+                // 1. Auto-bind doctor phone to Supabase if entered
+                if (doctorName && phone && normalizePhoneNumber(phone).length >= 10) {
+                    try {
+                        await autoBindDoctorPhoneToSupabase(doctorName, phone);
+                    } catch (e) {
+                        console.warn("Auto-bind note:", e);
+                    }
+                }
+
+                const msg = generateWhatsAppMessage(patientGroup, doctorName);
+
+                // 2. Check if Mobile Native Share with Files is supported (iOS Safari & Android Chrome)
+                if (typeof navigator !== "undefined" && typeof navigator.share === "function" && patientGroup.reports && patientGroup.reports.length > 0) {
+                    const filesToShare = [];
+
+                    for (const report of patientGroup.reports) {
+                        if (report.storage_path) {
+                            try {
+                                const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
+                                const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                                    headers: {
+                                        "apikey": SUPABASE_ANON_KEY,
+                                        "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
+                                    }
+                                });
+                                if (res.ok) {
+                                    const blob = await res.blob();
+                                    const safeName = report.filename || `${patientGroup.file_id}_${(report.study_type || 'Report').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                                    const fileObj = new File([blob], safeName, { type: "application/pdf" });
+                                    filesToShare.push(fileObj);
+                                }
+                            } catch (fetchErr) {
+                                console.warn("Could not fetch report for native share:", fetchErr);
+                            }
+                        }
+                    }
+
+                    // If files were loaded and browser supports file sharing
+                    if (filesToShare.length > 0) {
+                        const sharePayload = {
+                            title: `Ultrasound Report - ${patientGroup.patient_name}`,
+                            text: msg,
+                            files: filesToShare
+                        };
+
+                        if (typeof navigator.canShare === "function" && navigator.canShare(sharePayload)) {
+                            try {
+                                await navigator.share(sharePayload);
+                                showToast(`Shared PDF report for ${patientGroup.patient_name}`);
+                                if (whatsappShareModal && !whatsappShareModal.classList.contains("hidden")) {
+                                    closeWhatsAppModal();
+                                }
+                                return;
+                            } catch (shareErr) {
+                                if (shareErr.name === "AbortError") {
+                                    return; // User dismissed share sheet
+                                }
+                                console.warn("Navigator share fallback:", shareErr);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Fallback for Desktop or if native share unavailable: Open wa.me URL
+                openWhatsAppUrl(phone, msg);
+                showToast(`Opened WhatsApp for ${patientGroup.patient_name}`);
+                if (whatsappShareModal && !whatsappShareModal.classList.contains("hidden")) {
+                    closeWhatsAppModal();
+                }
+
+            } catch (err) {
+                console.error("WhatsApp share error:", err);
+                const msg = generateWhatsAppMessage(patientGroup, doctorName);
+                openWhatsAppUrl(phone, msg);
+            } finally {
+                if (btnElement) {
+                    btnElement.disabled = false;
+                    btnElement.innerHTML = origHtml;
+                }
+            }
+        }
+
         async function sendWhatsAppFromModal() {
             if (!currentWhatsAppPatientGroup) return;
             const phone = waModalPhoneInput.value.trim();
             const docName = getSelectedDoctorNameInModal();
-
-            // Auto-bind to Supabase if valid mobile number and doctor name are present
-            if (docName && phone && normalizePhoneNumber(phone).length >= 10) {
-                try {
-                    await autoBindDoctorPhoneToSupabase(docName, phone);
-                } catch (e) {
-                    console.warn("Auto-bind note:", e);
-                }
-            }
-
-            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
-            openWhatsAppUrl(phone, msg);
-            showToast(`Opened WhatsApp for ${currentWhatsAppPatientGroup.patient_name}`);
+            const btn = document.getElementById("waModalSendBtn");
+            await shareOrOpenWhatsApp(currentWhatsAppPatientGroup, docName, phone, btn);
         }
 
         function copyWhatsAppModalText() {
@@ -2421,6 +2501,7 @@ Baby Scan Fetal Medicine Center`;
 
             const phoneInput = document.getElementById(`card-phone-input-${pIdx}`);
             const select = document.getElementById(`card-doc-select-${pIdx}`);
+            const btn = event ? event.currentTarget : null;
 
             const phone = phoneInput ? phoneInput.value.trim() : "";
             const val = select ? select.value : "";
@@ -2435,18 +2516,7 @@ Baby Scan Fetal Medicine Center`;
                 docName = group.referring_doctor;
             }
 
-            // Auto-bind to Supabase if valid mobile number and doctor name are present
-            if (docName && phone && normalizePhoneNumber(phone).length >= 10) {
-                try {
-                    await autoBindDoctorPhoneToSupabase(docName, phone);
-                } catch (e) {
-                    console.warn("Auto-bind note:", e);
-                }
-            }
-
-            const msg = generateWhatsAppMessage(group, docName);
-            openWhatsAppUrl(phone, msg);
-            showToast(`Opened WhatsApp for ${group.patient_name}`);
+            await shareOrOpenWhatsApp(group, docName, phone, btn);
         }
 
         function copyCardWhatsAppText(pIdx) {
