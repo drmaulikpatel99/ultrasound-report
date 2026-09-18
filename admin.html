@@ -82,24 +82,43 @@
 
             <!-- User Status / Logout (hidden when logged out) -->
             <div id="navUserSection" class="hidden flex items-center space-x-2">
-                <button 
-                    onclick="openDoctorDirectoryModal()" 
-                    class="text-xs bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold px-3 py-2 rounded-xl transition-all border border-babyscan-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    title="Manage Referring Doctors & WhatsApp Contacts"
-                >
-                    <i class="fa-solid fa-user-doctor text-babyscan-600"></i>
-                    <span>Doctors Directory</span>
-                    <span id="navDocCountBadge" class="bg-babyscan-700 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">0</span>
-                </button>
+                <!-- Settings Dropdown -->
+                <div class="relative inline-block text-left" id="settingsDropdownContainer">
+                    <button 
+                        id="settingsMenuBtn"
+                        onclick="toggleSettingsMenu(event)" 
+                        class="text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold px-3 py-2 rounded-xl transition-all border border-slate-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        title="Settings & Directory"
+                    >
+                        <i class="fa-solid fa-gear text-slate-600"></i>
+                        <span class="hidden sm:inline">Settings</span>
+                        <i class="fa-solid fa-chevron-down text-[9px] text-slate-400 ml-0.5"></i>
+                    </button>
 
-                <button 
-                    onclick="openTemplateModal()" 
-                    class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold px-3 py-2 rounded-xl transition-all border border-emerald-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    title="Customize WhatsApp Message Template"
-                >
-                    <i class="fa-solid fa-pen-to-square text-emerald-600"></i>
-                    <span class="hidden sm:inline">WA Template</span>
-                </button>
+                    <div 
+                        id="settingsDropdownMenu" 
+                        class="hidden absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fade-in"
+                    >
+                        <button 
+                            onclick="closeSettingsMenu(); openDoctorDirectoryModal();" 
+                            class="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-babyscan-50 hover:text-babyscan-900 font-bold flex items-center justify-between transition-colors cursor-pointer"
+                        >
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-user-doctor text-babyscan-600 w-4 text-center"></i>
+                                <span>Doctors Directory</span>
+                            </span>
+                            <span id="navDocCountBadge" class="bg-babyscan-700 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">0</span>
+                        </button>
+
+                        <button 
+                            onclick="closeSettingsMenu(); openTemplateModal();" 
+                            class="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                        >
+                            <i class="fa-solid fa-pen-to-square text-emerald-600 w-4 text-center"></i>
+                            <span>Edit WA Template</span>
+                        </button>
+                    </div>
+                </div>
 
                 <div class="hidden md:flex flex-col text-right pl-1">
                     <span id="navUserEmail" class="text-xs font-bold text-slate-700"></span>
@@ -607,89 +626,25 @@
                         </div>
                     </div>
 
-                    <!-- Compact Message Controls & Collapsible Preview -->
-                    <div class="space-y-2 pt-1 border-t border-slate-100">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Message Text</label>
-                                <button 
-                                    type="button" 
-                                    id="waPreviewToggleBtn"
-                                    onclick="toggleWaPreviewText()" 
-                                    class="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer transition-colors"
-                                >
-                                    <i class="fa-solid fa-chevron-down text-[9px] transition-transform duration-200" id="waPreviewChevron"></i>
-                                    <span id="waPreviewToggleLabel">Show Preview</span>
-                                </button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <button 
-                                    type="button"
-                                    onclick="openTemplateModal()" 
-                                    class="text-[11px] font-bold text-babyscan-700 hover:text-babyscan-900 flex items-center gap-1 cursor-pointer transition-colors bg-babyscan-50 hover:bg-babyscan-100 px-2.5 py-1 rounded-lg border border-babyscan-200/80 shadow-2xs"
-                                    title="Edit WhatsApp message template"
-                                >
-                                    <i class="fa-solid fa-pen-to-square text-babyscan-600"></i>
-                                    <span>Edit Template</span>
-                                </button>
-                                <button 
-                                    type="button"
-                                    onclick="copyWhatsAppModalText()" 
-                                    class="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
-                                >
-                                    <i class="fa-regular fa-copy"></i>
-                                    <span>Copy</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Collapsible Live Message Preview (Hidden by default) -->
-                        <div 
-                            id="waModalMessagePreview" 
-                            class="hidden p-3.5 rounded-2xl bg-[#eef7ee] border border-emerald-200 text-slate-800 text-xs font-sans whitespace-pre-wrap leading-relaxed select-all shadow-inner font-medium max-h-36 overflow-y-auto"
-                        >
-                            <!-- Live message preview -->
-                        </div>
-                    </div>
-
                     <!-- Actions -->
-                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
                         <button 
+                            type="button"
                             onclick="closeWhatsAppModal()" 
-                            class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer"
+                            class="px-5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
                         >
                             Cancel
                         </button>
 
-                        <div class="flex items-center gap-2 w-full sm:w-auto">
-                            <button 
-                                type="button"
-                                id="waModalDownloadMergedBtn"
-                                onclick="downloadOrPreviewMergedPdfFromModal()" 
-                                class="px-3.5 py-2.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all"
-                                title="Download or preview PDF file"
-                            >
-                                <i class="fa-solid fa-file-arrow-down text-teal-700"></i>
-                                <span>Save PDF</span>
-                            </button>
-
-                            <button 
-                                onclick="copyWhatsAppModalText()" 
-                                class="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all"
-                            >
-                                <i class="fa-regular fa-copy"></i>
-                                <span>Copy Text</span>
-                            </button>
-
-                            <button 
-                                id="waModalSendBtn"
-                                onclick="sendWhatsAppFromModal()" 
-                                class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg transition-all"
-                            >
-                                <i class="fa-brands fa-whatsapp text-base"></i>
-                                <span>Share PDF on WhatsApp</span>
-                            </button>
-                        </div>
+                        <button 
+                            type="button"
+                            id="waModalSendBtn"
+                            onclick="sendWhatsAppFromModal()" 
+                            class="flex-1 sm:flex-initial px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg transition-all"
+                        >
+                            <i class="fa-brands fa-whatsapp text-base"></i>
+                            <span>Share PDF on WhatsApp</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -889,6 +844,29 @@
                 toast.classList.add("translate-y-20", "opacity-0");
             }, 3500);
         }
+
+        // Settings Dropdown Handlers
+        function toggleSettingsMenu(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById("settingsDropdownMenu");
+            if (menu) {
+                menu.classList.toggle("hidden");
+            }
+        }
+
+        function closeSettingsMenu() {
+            const menu = document.getElementById("settingsDropdownMenu");
+            if (menu) {
+                menu.classList.add("hidden");
+            }
+        }
+
+        document.addEventListener("click", (e) => {
+            const container = document.getElementById("settingsDropdownContainer");
+            if (container && !container.contains(e.target)) {
+                closeSettingsMenu();
+            }
+        });
 
         // Set default date picker to Today in local timezone
         function getTodayString() {
@@ -2831,7 +2809,7 @@ Baby Scan Fetal Medicine Center`;
             const docName = getSelectedDoctorNameInModal();
             const selectedReports = getSelectedModalReports();
             const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName, selectedReports);
-            waModalMessagePreview.textContent = msg;
+            if (waModalMessagePreview) waModalMessagePreview.textContent = msg;
 
             if (waModalScanSummary) {
                 const scanSummaryText = selectedReports.length > 0 ? buildScanListSummary(selectedReports) : "No PDFs selected (Text message only)";
