@@ -2839,14 +2839,44 @@ Baby Scan Fetal Medicine Center`;
             }
         }
 
-        // Robust PDF merger using PDFLib with fast parallel fetching & encryption bypassing
+        // Robust PDF merger: checks pre-merged cloud file first, with fallback to on-the-fly parallel merge
         async function buildMergedPdfBlob(patientGroup, reportsToShare) {
+            const cleanPatientName = (patientGroup.patient_name || "Patient").replace(/[^a-zA-Z0-9]/g, '_');
+            const fileId = (patientGroup.file_id && patientGroup.file_id !== "—") ? patientGroup.file_id : "REPORT";
+            const sortedReports = [...reportsToShare].sort(compareReportsByClinicalOrder);
+
+            // 1. Check if Supabase already has a pre-merged complete PDF from folder_watcher
+            const totalAvailable = (patientGroup.reports || []).length;
+            const isAllSelected = sortedReports.length === totalAvailable && totalAvailable > 1;
+
+            if (isAllSelected && fileId && fileId !== "REPORT") {
+                try {
+                    const preMergedPath = `reports/${fileId}_COMPLETE_REPORT.pdf`;
+                    const cleanPath = encodeURIComponent(preMergedPath).replace(/%2F/g, "/");
+                    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        if (blob && blob.size > 1000) {
+                            console.log(`[Admin] ⚡ Using pre-merged cloud report for ${fileId} (${blob.size} bytes)`);
+                            const fileName = `${fileId}_${cleanPatientName}_Complete_Report.pdf`;
+                            return { blob, fileName, pageCount: sortedReports.length };
+                        }
+                    }
+                } catch (preErr) {
+                    console.warn("[Admin] Pre-merged cloud check note:", preErr);
+                }
+            }
+
+            // 2. Dynamic client-side fallback if pre-merged file is not yet ready or custom scans are selected
             const PDFLibObj = window.PDFLib || (typeof PDFLib !== "undefined" ? PDFLib : null);
             if (!PDFLibObj || !PDFLibObj.PDFDocument) {
                 throw new Error("PDF processing engine is still initializing. Please retry in a moment.");
             }
-
-            const sortedReports = [...reportsToShare].sort(compareReportsByClinicalOrder);
             
             // Parallel fetch all PDF byte streams concurrently for max speed and keeping user gesture alive
             const fetchPromises = sortedReports.map(async (report) => {
@@ -2876,9 +2906,6 @@ Baby Scan Fetal Medicine Center`;
             if (validBuffers.length === 0) {
                 throw new Error("No PDF scans could be downloaded from cloud storage.");
             }
-
-            const cleanPatientName = (patientGroup.patient_name || "Patient").replace(/[^a-zA-Z0-9]/g, '_');
-            const fileId = (patientGroup.file_id && patientGroup.file_id !== "—") ? patientGroup.file_id : "REPORT";
 
             // If only 1 PDF, return its single blob
             if (validBuffers.length === 1) {
