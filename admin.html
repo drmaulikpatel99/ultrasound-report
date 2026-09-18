@@ -496,6 +496,26 @@
                         </div>
                     </div>
 
+                    <!-- PDF Attachments Selector -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                <i class="fa-solid fa-paperclip text-emerald-600 mr-1"></i> Attach Scan PDFs
+                            </label>
+                            <button 
+                                type="button" 
+                                id="waModalSelectAllBtn" 
+                                onclick="toggleSelectAllModalPdfs()" 
+                                class="text-[11px] font-extrabold text-emerald-700 hover:text-emerald-800 cursor-pointer transition-colors"
+                            >
+                                Deselect All
+                            </button>
+                        </div>
+                        <div id="waModalPdfList" class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                            <!-- Populated dynamically with checkboxes for each scan/sheet -->
+                        </div>
+                    </div>
+
                     <!-- Referring Doctor Select & Phone Number -->
                     <div class="space-y-3">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -680,6 +700,9 @@
         const waModalBindNotice = document.getElementById("waModalBindNotice");
         const waModalBindNoticeText = document.getElementById("waModalBindNoticeText");
         const waModalMessagePreview = document.getElementById("waModalMessagePreview");
+        const waModalPdfList = document.getElementById("waModalPdfList");
+        const waModalSelectAllBtn = document.getElementById("waModalSelectAllBtn");
+        let currentModalSelectedReportIds = new Set();
 
         function showToast(message, isError = false) {
             toastMsg.textContent = message;
@@ -2138,10 +2161,11 @@
             return titles.join(" + ");
         }
 
-        function generateWhatsAppMessage(patientGroup, doctorName = "") {
+        function generateWhatsAppMessage(patientGroup, doctorName = "", reportsOverride = null) {
             const patientName = patientGroup.patient_name || "Patient";
             const visitDate = patientGroup.visit_date && patientGroup.visit_date !== "—" ? patientGroup.visit_date : formatUploadDateOnly(patientGroup.created_at);
-            const scansSummary = buildScanListSummary(patientGroup.reports);
+            const reportsToUse = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
+            const scansSummary = reportsToUse.length > 0 ? buildScanListSummary(reportsToUse) : "Ultrasound Report";
 
             return `Greetings from Baby Scan Fetal Medicine & Gynec Imaging.
 
@@ -2191,7 +2215,7 @@ Baby Scan Fetal Medicine Center`;
         }
 
         // =========================================================================
-        // 📱 WHATSAPP MODAL & CARD ACTIONS
+        // 📱 WHATSAPP MODAL & CARD ACTIONS (MULTI-PDF SELECTION)
         // =========================================================================
 
         function openWhatsAppModalForGroup(pIdx) {
@@ -2204,10 +2228,14 @@ Baby Scan Fetal Medicine Center`;
             waModalPatientName.textContent = group.patient_name || "Patient";
             const vDate = group.visit_date && group.visit_date !== "—" ? group.visit_date : formatUploadDateOnly(group.created_at);
             waModalVisitDate.textContent = vDate;
-            waModalScanSummary.innerHTML = `<i class="fa-solid fa-stethoscope mr-1 text-emerald-600"></i> ${escapeHTML(buildScanListSummary(group.reports))}`;
 
-            // Populate Doctors Select
+            // 1. Populate multi-PDF checkboxes (all selected by default)
+            populateWhatsAppModalPdfList(group);
+
+            // 2. Populate Doctors Select
             populateWhatsAppModalDoctors(group);
+
+            // 3. Update message preview & buttons
             updateWhatsAppPreview();
 
             whatsappShareModal.classList.remove("hidden");
@@ -2216,6 +2244,124 @@ Baby Scan Fetal Medicine Center`;
         function closeWhatsAppModal() {
             whatsappShareModal.classList.add("hidden");
             currentWhatsAppPatientGroup = null;
+            currentModalSelectedReportIds.clear();
+        }
+
+        function populateWhatsAppModalPdfList(group) {
+            currentModalSelectedReportIds.clear();
+            if (!group.reports || group.reports.length === 0) {
+                if (waModalPdfList) {
+                    waModalPdfList.innerHTML = `<p class="text-xs text-slate-400 py-2">No PDF reports available.</p>`;
+                }
+                return;
+            }
+
+            // By default, select all available reports/sheets
+            group.reports.forEach((r, idx) => {
+                const key = r.id || r.storage_path || `idx_${idx}`;
+                currentModalSelectedReportIds.add(key);
+            });
+
+            renderModalPdfCheckboxes();
+        }
+
+        function renderModalPdfCheckboxes() {
+            if (!currentWhatsAppPatientGroup || !currentWhatsAppPatientGroup.reports || !waModalPdfList) return;
+
+            const reports = currentWhatsAppPatientGroup.reports;
+            const total = reports.length;
+            const selectedCount = currentModalSelectedReportIds.size;
+
+            if (waModalSelectAllBtn) {
+                waModalSelectAllBtn.textContent = (selectedCount === total && total > 0) ? "Deselect All" : "Select All";
+            }
+
+            waModalPdfList.innerHTML = reports.map((r, idx) => {
+                const key = r.id || r.storage_path || `idx_${idx}`;
+                const isChecked = currentModalSelectedReportIds.has(key);
+                const badgeClass = getStudyBadgeClass(r.study_type);
+                const label = getStudyTypeLabel(r.study_type);
+                const icon = getStudyIcon(r.study_type);
+
+                return `
+                    <div 
+                        onclick="toggleModalPdfItem('${escapeHTML(key)}')"
+                        class="flex items-center justify-between p-2 sm:px-3 rounded-xl border transition-all cursor-pointer select-none ${
+                            isChecked 
+                                ? 'bg-emerald-50/60 border-emerald-300 shadow-2xs' 
+                                : 'bg-slate-50/70 border-slate-200 opacity-60 hover:opacity-90'
+                        }"
+                    >
+                        <div class="flex items-center gap-2.5 min-w-0 pr-2">
+                            <input 
+                                type="checkbox" 
+                                class="w-4 h-4 text-emerald-600 rounded-md border-slate-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600 shrink-0 pointer-events-none" 
+                                ${isChecked ? 'checked' : ''}
+                            >
+                            <div class="w-7 h-7 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                                ${icon}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span class="font-bold text-xs text-slate-800 truncate">${escapeHTML(r.study_type || 'Ultrasound Scan')}</span>
+                                    <span class="${badgeClass} text-[9px] font-extrabold px-1.5 py-0.2 rounded">${label}</span>
+                                </div>
+                                ${r.filename ? `<p class="text-[10px] text-slate-400 font-mono truncate mt-0.5">${escapeHTML(r.filename)}</p>` : ''}
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold ${isChecked ? 'text-emerald-700' : 'text-slate-400'} shrink-0 ml-2">
+                            ${isChecked ? '<i class="fa-solid fa-check mr-0.5"></i> Attached' : 'Omitted'}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+
+            updateModalSendButtonText();
+            updateWhatsAppPreview();
+        }
+
+        function toggleModalPdfItem(key) {
+            if (currentModalSelectedReportIds.has(key)) {
+                currentModalSelectedReportIds.delete(key);
+            } else {
+                currentModalSelectedReportIds.add(key);
+            }
+            renderModalPdfCheckboxes();
+        }
+
+        function toggleSelectAllModalPdfs() {
+            if (!currentWhatsAppPatientGroup || !currentWhatsAppPatientGroup.reports) return;
+            const reports = currentWhatsAppPatientGroup.reports;
+            if (currentModalSelectedReportIds.size === reports.length) {
+                currentModalSelectedReportIds.clear();
+            } else {
+                reports.forEach((r, idx) => {
+                    const key = r.id || r.storage_path || `idx_${idx}`;
+                    currentModalSelectedReportIds.add(key);
+                });
+            }
+            renderModalPdfCheckboxes();
+        }
+
+        function getSelectedModalReports() {
+            if (!currentWhatsAppPatientGroup || !currentWhatsAppPatientGroup.reports) return [];
+            return currentWhatsAppPatientGroup.reports.filter((r, idx) => {
+                const key = r.id || r.storage_path || `idx_${idx}`;
+                return currentModalSelectedReportIds.has(key);
+            });
+        }
+
+        function updateModalSendButtonText() {
+            const count = currentModalSelectedReportIds.size;
+            const btn = document.getElementById("waModalSendBtn");
+            if (!btn) return;
+            if (count === 0) {
+                btn.innerHTML = `<i class="fa-brands fa-whatsapp text-base"></i> <span>Send WhatsApp (Text Only)</span>`;
+            } else if (count === 1) {
+                btn.innerHTML = `<i class="fa-brands fa-whatsapp text-base"></i> <span>Share 1 PDF on WhatsApp</span>`;
+            } else {
+                btn.innerHTML = `<i class="fa-brands fa-whatsapp text-base"></i> <span>Share ${count} PDFs on WhatsApp</span>`;
+            }
         }
 
         function populateWhatsAppModalDoctors(group) {
@@ -2352,16 +2498,22 @@ Baby Scan Fetal Medicine Center`;
         function updateWhatsAppPreview() {
             if (!currentWhatsAppPatientGroup) return;
             const docName = getSelectedDoctorNameInModal();
-            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
+            const selectedReports = getSelectedModalReports();
+            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName, selectedReports);
             waModalMessagePreview.textContent = msg;
+
+            if (waModalScanSummary) {
+                const scanSummaryText = selectedReports.length > 0 ? buildScanListSummary(selectedReports) : "No PDFs selected (Text message only)";
+                waModalScanSummary.innerHTML = `<i class="fa-solid fa-stethoscope mr-1 text-emerald-600"></i> ${escapeHTML(scanSummaryText)}`;
+            }
         }
 
-        async function shareOrOpenWhatsApp(patientGroup, doctorName, phone, btnElement = null) {
+        async function shareOrOpenWhatsApp(patientGroup, doctorName, phone, btnElement = null, reportsOverride = null) {
             let origHtml = "";
             if (btnElement) {
                 origHtml = btnElement.innerHTML;
                 btnElement.disabled = true;
-                btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Preparing PDF...`;
+                btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Preparing PDF(s)...`;
             }
 
             try {
@@ -2374,13 +2526,14 @@ Baby Scan Fetal Medicine Center`;
                     }
                 }
 
-                const msg = generateWhatsAppMessage(patientGroup, doctorName);
+                const reportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
+                const msg = generateWhatsAppMessage(patientGroup, doctorName, reportsToShare);
 
                 // 2. Check if Mobile Native Share with Files is supported (iOS Safari & Android Chrome)
-                if (typeof navigator !== "undefined" && typeof navigator.share === "function" && patientGroup.reports && patientGroup.reports.length > 0) {
+                if (typeof navigator !== "undefined" && typeof navigator.share === "function" && reportsToShare.length > 0) {
                     const filesToShare = [];
 
-                    for (const report of patientGroup.reports) {
+                    for (const report of reportsToShare) {
                         if (report.storage_path) {
                             try {
                                 const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
@@ -2413,7 +2566,7 @@ Baby Scan Fetal Medicine Center`;
                         if (typeof navigator.canShare === "function" && navigator.canShare(sharePayload)) {
                             try {
                                 await navigator.share(sharePayload);
-                                showToast(`Shared PDF report for ${patientGroup.patient_name}`);
+                                showToast(`Shared ${filesToShare.length} PDF(s) for ${patientGroup.patient_name}`);
                                 if (whatsappShareModal && !whatsappShareModal.classList.contains("hidden")) {
                                     closeWhatsAppModal();
                                 }
@@ -2437,7 +2590,8 @@ Baby Scan Fetal Medicine Center`;
 
             } catch (err) {
                 console.error("WhatsApp share error:", err);
-                const msg = generateWhatsAppMessage(patientGroup, doctorName);
+                const reportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
+                const msg = generateWhatsAppMessage(patientGroup, doctorName, reportsToShare);
                 openWhatsAppUrl(phone, msg);
             } finally {
                 if (btnElement) {
@@ -2452,13 +2606,15 @@ Baby Scan Fetal Medicine Center`;
             const phone = waModalPhoneInput.value.trim();
             const docName = getSelectedDoctorNameInModal();
             const btn = document.getElementById("waModalSendBtn");
-            await shareOrOpenWhatsApp(currentWhatsAppPatientGroup, docName, phone, btn);
+            const selectedReports = getSelectedModalReports();
+            await shareOrOpenWhatsApp(currentWhatsAppPatientGroup, docName, phone, btn, selectedReports);
         }
 
         function copyWhatsAppModalText() {
             if (!currentWhatsAppPatientGroup) return;
             const docName = getSelectedDoctorNameInModal();
-            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
+            const selectedReports = getSelectedModalReports();
+            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName, selectedReports);
 
             copyToClipboard(msg, "Copied WhatsApp message to clipboard!");
         }
