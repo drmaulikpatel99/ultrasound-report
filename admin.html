@@ -1864,7 +1864,7 @@
             saveDocBtnText.textContent = "Saving...";
 
             try {
-                let doctorRecord = {
+                let doctorPayload = {
                     name,
                     phone: cleanPhone,
                     hospital
@@ -1872,9 +1872,6 @@
 
                 if (docId) {
                     // Update existing doctor
-                    doctorRecord.id = docId;
-
-                    // 1. Cloud update
                     if (currentSession && currentSession.access_token) {
                         try {
                             await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors?id=eq.${docId}`, {
@@ -1882,28 +1879,29 @@
                                 headers: {
                                     "apikey": SUPABASE_ANON_KEY,
                                     "Authorization": `Bearer ${currentSession.access_token}`,
-                                    "Content-Type": "application/json"
+                                    "Content-Type": "application/json",
+                                    "Prefer": "return=representation"
                                 },
-                                body: JSON.stringify(doctorRecord)
+                                body: JSON.stringify(doctorPayload)
                             });
                         } catch (e) {
                             console.warn("Supabase doctor update error:", e);
                         }
                     }
 
-                    // 2. Local update
                     const idx = referringDoctorsCache.findIndex(d => d.id === docId);
                     if (idx >= 0) {
-                        referringDoctorsCache[idx] = { ...referringDoctorsCache[idx], ...doctorRecord };
+                        referringDoctorsCache[idx] = { ...referringDoctorsCache[idx], ...doctorPayload };
                     }
                     showToast(`Updated ${name}`);
                 } else {
                     // Add new doctor
-                    const newId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`;
-                    doctorRecord.id = newId;
-                    doctorRecord.created_at = new Date().toISOString();
+                    let savedDoc = {
+                        ...doctorPayload,
+                        id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`,
+                        created_at: new Date().toISOString()
+                    };
 
-                    // 1. Cloud insert
                     if (currentSession && currentSession.access_token) {
                         try {
                             const res = await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors`, {
@@ -1911,14 +1909,15 @@
                                 headers: {
                                     "apikey": SUPABASE_ANON_KEY,
                                     "Authorization": `Bearer ${currentSession.access_token}`,
-                                    "Content-Type": "application/json"
+                                    "Content-Type": "application/json",
+                                    "Prefer": "return=representation"
                                 },
-                                body: JSON.stringify(doctorRecord)
+                                body: JSON.stringify(doctorPayload)
                             });
                             if (res.ok) {
                                 const inserted = await res.json();
                                 if (Array.isArray(inserted) && inserted[0]) {
-                                    doctorRecord = inserted[0];
+                                    savedDoc = inserted[0];
                                 }
                             }
                         } catch (e) {
@@ -1926,7 +1925,7 @@
                         }
                     }
 
-                    referringDoctorsCache.push(doctorRecord);
+                    referringDoctorsCache.push(savedDoc);
                     showToast(`Added ${name} to Directory`);
                 }
 
@@ -2068,7 +2067,8 @@
                             headers: {
                                 "apikey": SUPABASE_ANON_KEY,
                                 "Authorization": `Bearer ${currentSession.access_token}`,
-                                "Content-Type": "application/json"
+                                "Content-Type": "application/json",
+                                "Prefer": "return=representation"
                             },
                             body: JSON.stringify({ phone: cleanPhone, hospital: existingDoc.hospital || "" })
                         });
@@ -2079,31 +2079,42 @@
                 showToast(`Saved phone number for ${cleanName}`);
             } else {
                 // Create new doctor entry
-                const newId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`;
-                const newDoc = {
-                    id: newId,
+                const newDocPayload = {
                     name: cleanName,
                     phone: cleanPhone,
-                    hospital: hospital || "",
+                    hospital: hospital || ""
+                };
+
+                let savedDoc = {
+                    ...newDocPayload,
+                    id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`,
                     created_at: new Date().toISOString()
                 };
-                referringDoctorsCache.unshift(newDoc);
 
                 if (currentSession && currentSession.access_token) {
                     try {
-                        await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors`, {
+                        const res = await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors`, {
                             method: "POST",
                             headers: {
                                 "apikey": SUPABASE_ANON_KEY,
                                 "Authorization": `Bearer ${currentSession.access_token}`,
-                                "Content-Type": "application/json"
+                                "Content-Type": "application/json",
+                                "Prefer": "return=representation"
                             },
-                            body: JSON.stringify(newDoc)
+                            body: JSON.stringify(newDocPayload)
                         });
+                        if (res.ok) {
+                            const inserted = await res.json();
+                            if (Array.isArray(inserted) && inserted[0]) {
+                                savedDoc = inserted[0];
+                            }
+                        }
                     } catch (e) {
                         console.warn("Supabase doctor creation:", e);
                     }
                 }
+
+                referringDoctorsCache.unshift(savedDoc);
                 showToast(`Saved ${cleanName} to Directory`);
             }
 
