@@ -725,6 +725,7 @@
         // Visual helpers for study categories
         function getStudyBadgeClass(studyType) {
             const s = (studyType || "").toUpperCase();
+            if (s.includes("GROWTH") || s.includes("CHART") || s.includes("GRAPH")) return "bg-emerald-50 text-emerald-800 border border-emerald-200/80";
             if (s.includes("3D") || s.includes("4D")) return "bg-rose-50 text-rose-800 border border-rose-200/80";
             if (s.includes("2D")) return "bg-purple-50 text-purple-800 border border-purple-200/80";
             if (s.includes("ECHO")) return "bg-indigo-50 text-indigo-800 border border-indigo-200/80";
@@ -734,6 +735,7 @@
 
         function getStudyIcon(studyType) {
             const s = (studyType || "").toUpperCase();
+            if (s.includes("GROWTH") || s.includes("CHART") || s.includes("GRAPH")) return `<i class="fa-solid fa-chart-line text-emerald-600"></i>`;
             if (s.includes("3D") || s.includes("4D")) return `<i class="fa-solid fa-cube text-rose-600"></i>`;
             if (s.includes("2D")) return `<i class="fa-solid fa-images text-purple-600"></i>`;
             if (s.includes("ECHO")) return `<i class="fa-solid fa-heart-pulse text-indigo-600"></i>`;
@@ -743,6 +745,7 @@
 
         function getStudyTypeLabel(studyType) {
             const s = (studyType || "").toUpperCase();
+            if (s.includes("GROWTH") || s.includes("CHART") || s.includes("GRAPH")) return "Growth Charts";
             if (s.includes("3D") || s.includes("4D")) return "3D Fetal Photo";
             if (s.includes("2D")) return "2D Image Sheet";
             if (s.includes("ECHO")) return "Fetal Echo";
