@@ -55,6 +55,12 @@
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col justify-between font-sans text-slate-800">
 
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none flex items-center space-x-2 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl text-xs font-bold border border-slate-700">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
+        <span id="toastMsg">Operation successful</span>
+    </div>
+
     <!-- Header -->
     <header class="bg-white border-b border-slate-200 py-3.5 px-6 shadow-sm sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex items-center justify-between">
@@ -228,7 +234,7 @@
                         </div>
                     </div>
 
-                    <!-- Search Input & Quick Actions -->
+                    <!-- Search Input & Action Buttons -->
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="space-y-1 flex-grow sm:flex-grow-0">
                             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">Search in Results</label>
@@ -247,13 +253,18 @@
                         </div>
 
                         <div class="flex items-end gap-2 pt-4">
+                            <!-- Prominent Refresh Button -->
                             <button 
-                                onclick="loadAllReports()" 
-                                title="Refresh data"
-                                class="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-all cursor-pointer"
+                                id="refreshBtn"
+                                onclick="loadAllReports(true)" 
+                                title="Fetch latest updates from cloud"
+                                class="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                             >
-                                <i id="refreshIcon" class="fa-solid fa-rotate-right text-sm"></i>
+                                <i id="refreshIcon" class="fa-solid fa-arrows-rotate text-sm text-slate-500"></i>
+                                <span>Refresh</span>
                             </button>
+
+                            <!-- Batch Day ZIP Download -->
                             <button 
                                 id="downloadDayZipBtn"
                                 onclick="downloadFilteredZip()"
@@ -364,6 +375,25 @@
         const statTotalCount = document.getElementById("statTotalCount");
         const refreshIcon = document.getElementById("refreshIcon");
 
+        const toast = document.getElementById("toast");
+        const toastMsg = document.getElementById("toastMsg");
+        const toastIcon = document.getElementById("toastIcon");
+
+        function showToast(message, isError = false) {
+            toastMsg.textContent = message;
+            if (isError) {
+                toastIcon.className = "fa-solid fa-circle-exclamation text-red-400 text-sm";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400 text-sm";
+            }
+            toast.classList.remove("translate-y-20", "opacity-0");
+            toast.classList.add("translate-y-0", "opacity-100");
+            setTimeout(() => {
+                toast.classList.remove("translate-y-0", "opacity-100");
+                toast.classList.add("translate-y-20", "opacity-0");
+            }, 3500);
+        }
+
         // Set default date picker to Today in local timezone
         function getTodayString() {
             const today = new Date();
@@ -468,7 +498,7 @@
         }
 
         // 4. Fetch All Reports for Doctor (30 Days)
-        async function loadAllReports() {
+        async function loadAllReports(showToastNotice = false) {
             if (!currentSession || !currentSession.access_token) {
                 showLogin();
                 return;
@@ -479,7 +509,7 @@
                 <tr>
                     <td colspan="7" class="py-12 text-center text-slate-400">
                         <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
-                        <p>Fetching 30-day reports from Supabase...</p>
+                        <p>Fetching latest reports from Supabase...</p>
                     </td>
                 </tr>
             `;
@@ -495,7 +525,6 @@
                 });
 
                 if (res.status === 401 || res.status === 403) {
-                    // Session expired or invalid
                     alert("Doctor session expired. Please sign in again.");
                     logout();
                     return;
@@ -509,6 +538,10 @@
                 allReportsCache = await res.json();
                 updateOverallStats();
                 applyFilterAndRender();
+
+                if (showToastNotice) {
+                    showToast(`Refreshed! Found ${allReportsCache.length} active reports.`);
+                }
 
             } catch (err) {
                 console.error("Load reports error:", err);
@@ -568,11 +601,10 @@
             if (selectedDate) {
                 const [selYear, selMonth, selDay] = selectedDate.split('-');
                 const formattedDDMMYYYY = `${selDay}/${selMonth}/${selYear}`;
+                const formattedDASH = `${selDay}-${selMonth}-${selYear}`;
 
                 list = list.filter(r => {
-                    // Match visit_date (e.g. 17/09/2026)
-                    if (r.visit_date && r.visit_date.includes(formattedDDMMYYYY)) return true;
-                    // Match created_at ISO timestamp date
+                    if (r.visit_date && (r.visit_date.includes(formattedDDMMYYYY) || r.visit_date.includes(formattedDASH))) return true;
                     if (r.created_at && r.created_at.startsWith(selectedDate)) return true;
                     return false;
                 });
@@ -639,15 +671,27 @@
                         }
                     </td>
                     <td class="py-3.5 px-6 text-right">
-                        <div class="inline-flex items-center gap-2">
+                        <div class="inline-flex items-center gap-1.5">
+                            <!-- Download PDF Button -->
                             <button 
                                 id="btn-dl-${idx}"
                                 onclick="downloadAdminReport('${r.storage_path}', '${escapeHTML(r.filename)}', 'btn-dl-${idx}')"
-                                class="px-3 py-1.5 rounded-xl bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold border border-babyscan-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer"
+                                class="px-2.5 py-1.5 rounded-xl bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold border border-babyscan-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer"
                                 title="Download PDF"
                             >
                                 <i class="fa-solid fa-download"></i>
                                 <span>PDF</span>
+                            </button>
+
+                            <!-- Delete Report Button -->
+                            <button 
+                                id="btn-del-${idx}"
+                                onclick="deleteReport('${r.id}', '${r.storage_path}', '${escapeHTML(r.file_id)}', '${escapeHTML(r.full_name || r.first_name)}', '${escapeHTML(r.study_type || 'Scan')}', 'btn-del-${idx}')"
+                                class="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 transition-all flex items-center gap-1 text-[11px] cursor-pointer"
+                                title="Delete Report from Cloud"
+                            >
+                                <i class="fa-solid fa-trash-can"></i>
+                                <span>Delete</span>
                             </button>
                         </div>
                     </td>
@@ -701,7 +745,69 @@
             }
         }
 
-        // 9. Batch Download Filtered Reports as ZIP
+        // 9. Delete Single Report from Cloud
+        async function deleteReport(reportId, storagePath, fileId, patientName, studyType, btnId) {
+            const confirmed = confirm(
+                `Are you sure you want to delete this report?\n\n` +
+                `Patient: ${patientName} (${fileId})\n` +
+                `Study: ${studyType}\n\n` +
+                `This will permanently delete the report PDF from cloud storage and remove it from database.`
+            );
+            if (!confirmed) return;
+
+            const btn = document.getElementById(btnId);
+            const origHtml = btn ? btn.innerHTML : "";
+            if (btn) {
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                btn.disabled = true;
+            }
+
+            try {
+                // 1. Delete PDF from Supabase Storage
+                if (storagePath) {
+                    const cleanPath = encodeURIComponent(storagePath).replace(/%2F/g, "/");
+                    await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                        method: "DELETE",
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": `Bearer ${currentSession.access_token}`
+                        }
+                    });
+                }
+
+                // 2. Delete Row from Supabase Database
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?id=eq.${reportId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${currentSession.access_token}`,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || `HTTP ${res.status}`);
+                }
+
+                // 3. Remove from local cache and re-render
+                allReportsCache = allReportsCache.filter(r => r.id !== reportId);
+                updateOverallStats();
+                applyFilterAndRender();
+                showToast(`Deleted report for ${patientName} (${studyType})`);
+
+            } catch (err) {
+                console.error("Delete error:", err);
+                alert("Could not delete report: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        // 10. Batch Download Filtered Reports as ZIP
         async function downloadFilteredZip() {
             if (!filteredReports || filteredReports.length === 0) {
                 alert("No reports available for the current filter to download.");
