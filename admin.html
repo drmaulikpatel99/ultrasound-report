@@ -74,8 +74,18 @@
             </div>
 
             <!-- User Status / Logout (hidden when logged out) -->
-            <div id="navUserSection" class="hidden flex items-center space-x-3">
-                <div class="hidden md:flex flex-col text-right">
+            <div id="navUserSection" class="hidden flex items-center space-x-2.5">
+                <button 
+                    onclick="openDoctorDirectoryModal()" 
+                    class="text-xs bg-babyscan-50 hover:bg-babyscan-100 text-babyscan-800 font-bold px-3 py-2 rounded-xl transition-all border border-babyscan-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Manage Referring Doctors & WhatsApp Contacts"
+                >
+                    <i class="fa-solid fa-user-doctor text-babyscan-600"></i>
+                    <span>Doctors Directory</span>
+                    <span id="navDocCountBadge" class="bg-babyscan-700 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+
+                <div class="hidden md:flex flex-col text-right pl-1">
                     <span id="navUserEmail" class="text-xs font-bold text-slate-700"></span>
                     <span class="text-[10px] text-emerald-600 font-semibold flex items-center justify-end gap-1">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Authorized Doctor
@@ -318,6 +328,275 @@
                 </div>
             </div>
 
+        <!-- ===================================================================== -->
+        <!-- 3. DOCTOR DIRECTORY MODAL -->
+        <!-- ===================================================================== -->
+        <div id="doctorDirectoryModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 transform transition-all">
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-5 text-white flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center text-lg border border-teal-500/30">
+                            <i class="fa-solid fa-user-doctor"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold flex items-center gap-2">
+                                Referring Doctors Directory
+                                <span id="docDirectoryCount" class="text-[11px] bg-teal-500/30 text-teal-300 font-bold px-2 py-0.5 rounded-full border border-teal-500/40">0 Doctors</span>
+                            </h3>
+                            <p class="text-xs text-slate-300 mt-0.5">Manage consultant contacts for instant WhatsApp report delivery</p>
+                        </div>
+                    </div>
+                    <button 
+                        onclick="closeDoctorDirectoryModal()" 
+                        class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                        title="Close"
+                    >
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                    <!-- Add / Edit Doctor Form Card -->
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/90 space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h4 id="docFormTitle" class="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-user-plus text-babyscan-600"></i> Add New Referring Doctor
+                            </h4>
+                            <button 
+                                id="cancelEditDocBtn" 
+                                onclick="cancelDoctorEdit()" 
+                                class="hidden text-[11px] font-bold text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                            >
+                                Cancel Edit
+                            </button>
+                        </div>
+                        <input type="hidden" id="docFormId" value="">
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="space-y-1 sm:col-span-1">
+                                <label class="block text-[11px] font-bold text-slate-600">Doctor Name *</label>
+                                <input 
+                                    type="text" 
+                                    id="docNameInput" 
+                                    placeholder="e.g. Dr. Sneha Shah" 
+                                    class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-babyscan-500"
+                                >
+                            </div>
+                            <div class="space-y-1 sm:col-span-1">
+                                <label class="block text-[11px] font-bold text-slate-600">WhatsApp Mobile *</label>
+                                <input 
+                                    type="tel" 
+                                    id="docPhoneInput" 
+                                    placeholder="e.g. 98980 12345" 
+                                    class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-babyscan-500"
+                                >
+                            </div>
+                            <div class="space-y-1 sm:col-span-1">
+                                <label class="block text-[11px] font-bold text-slate-600">Hospital / Clinic</label>
+                                <input 
+                                    type="text" 
+                                    id="docHospitalInput" 
+                                    placeholder="e.g. Shreeji Hospital" 
+                                    class="w-full px-3 py-2 border border-slate-200 rounded-xl bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-babyscan-500"
+                                >
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-2 pt-1">
+                            <button 
+                                id="saveDocBtn" 
+                                onclick="handleSaveDoctorForm()" 
+                                class="px-4 py-2 rounded-xl btn-babyscan text-white font-bold text-xs flex items-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer transition-all"
+                            >
+                                <i class="fa-solid fa-check"></i>
+                                <span id="saveDocBtnText">Save Doctor to Directory</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Directory Search & List -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="relative flex-grow">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                                </div>
+                                <input 
+                                    type="text" 
+                                    id="docDirectorySearch" 
+                                    oninput="renderDoctorDirectoryList()" 
+                                    placeholder="Search doctor by name, clinic, or phone..." 
+                                    class="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-babyscan-500"
+                                >
+                            </div>
+                        </div>
+
+                        <!-- Doctors List Container -->
+                        <div id="docDirectoryList" class="space-y-2">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                    <span class="flex items-center gap-1.5">
+                        <i class="fa-solid fa-cloud-arrow-up text-babyscan-600"></i> Auto-synced with cloud & local cache
+                    </span>
+                    <button 
+                        onclick="closeDoctorDirectoryModal()" 
+                        class="px-4 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================== -->
+        <!-- 4. WHATSAPP REPORT SHARING MODAL -->
+        <!-- ===================================================================== -->
+        <div id="whatsappShareModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div class="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 transform transition-all">
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 px-6 py-5 text-white flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-white/20 text-white flex items-center justify-center text-xl border border-white/30">
+                            <i class="fa-brands fa-whatsapp"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold">Send Report to Consultant</h3>
+                            <p class="text-xs text-emerald-100 mt-0.5">WhatsApp Notification & Summary</p>
+                        </div>
+                    </div>
+                    <button 
+                        onclick="closeWhatsAppModal()" 
+                        class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                        title="Close"
+                    >
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="p-6 space-y-5">
+                    <!-- Patient Context Banner -->
+                    <div class="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200/80 flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span id="waModalPatientId" class="px-2 py-0.5 rounded-md bg-babyscan-700 text-white font-extrabold text-[11px]">B2223</span>
+                                <h4 id="waModalPatientName" class="font-extrabold text-sm text-slate-900">Mrs. GEETABEN THAKOR</h4>
+                            </div>
+                            <p id="waModalScanSummary" class="text-xs text-emerald-900 font-medium mt-1">
+                                <i class="fa-solid fa-stethoscope mr-1 text-emerald-600"></i> Target Scan Report + 2D Image Sheet + Growth Charts
+                            </p>
+                        </div>
+                        <div class="text-right text-xs text-slate-500 shrink-0">
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase">Visit Date</span>
+                            <strong id="waModalVisitDate" class="text-slate-800 font-bold">18/09/2026</strong>
+                        </div>
+                    </div>
+
+                    <!-- Referring Doctor Select & Phone Number -->
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Referring Doctor</label>
+                                    <span id="waModalDocBadge" class="hidden text-[10px] font-extrabold px-2 py-0.5 rounded-md"></span>
+                                </div>
+                                <select 
+                                    id="waModalDocSelect" 
+                                    onchange="onWhatsAppModalDoctorSelected()"
+                                    class="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                >
+                                    <!-- Populated with doctors from directory / patient report -->
+                                </select>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Consultant WhatsApp Mobile</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-600 font-bold text-xs">
+                                        +91
+                                    </div>
+                                    <input 
+                                        type="tel" 
+                                        id="waModalPhoneInput" 
+                                        oninput="onWhatsAppModalPhoneInput(this.value)"
+                                        placeholder="Enter 10-digit mobile number" 
+                                        class="w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder:text-slate-400 placeholder:font-normal"
+                                    >
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Custom Doctor Name Input (Hidden unless Custom is selected) -->
+                        <div id="waModalCustomDocContainer" class="hidden space-y-1 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                            <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Custom Doctor Name</label>
+                            <input 
+                                type="text" 
+                                id="waModalCustomDocName" 
+                                oninput="updateWhatsAppPreview()"
+                                placeholder="e.g. Dr. Nilesh Chauhan" 
+                                class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            >
+                        </div>
+
+                        <!-- Auto-Bind Explanation Notice -->
+                        <div id="waModalBindNotice" class="text-[11px] text-slate-500 flex items-center gap-1.5 px-1 font-medium">
+                            <i class="fa-solid fa-cloud-arrow-up text-emerald-600 text-xs"></i>
+                            <span id="waModalBindNoticeText">Mobile numbers entered here will automatically bind to the doctor in Supabase.</span>
+                        </div>
+                    </div>
+
+                    <!-- Message Preview Box -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">WhatsApp Message Preview</label>
+                            <button 
+                                onclick="copyWhatsAppModalText()" 
+                                class="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+                            >
+                                <i class="fa-regular fa-copy"></i> Copy Text
+                            </button>
+                        </div>
+                        <div 
+                            id="waModalMessagePreview" 
+                            class="p-4 rounded-2xl bg-[#eef7ee] border border-emerald-200 text-slate-800 text-xs font-sans whitespace-pre-wrap leading-relaxed select-all shadow-inner font-medium"
+                        >
+                            <!-- Live message preview -->
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <button 
+                            onclick="closeWhatsAppModal()" 
+                            class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+
+                        <div class="flex items-center gap-2 w-full sm:w-auto">
+                            <button 
+                                onclick="copyWhatsAppModalText()" 
+                                class="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+                            >
+                                <i class="fa-regular fa-copy"></i>
+                                <span>Copy Message</span>
+                            </button>
+
+                            <button 
+                                id="waModalSendBtn"
+                                onclick="sendWhatsAppFromModal()" 
+                                class="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg transition-all"
+                            >
+                                <i class="fa-brands fa-whatsapp text-base"></i>
+                                <span>Send on WhatsApp</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </main>
@@ -341,12 +620,15 @@
         let allReportsCache = [];
         let filteredReports = [];
         window.currentPatientGroups = [];
+        let referringDoctorsCache = [];
+        let currentWhatsAppPatientGroup = null;
 
         // DOM elements
         const loginSection = document.getElementById("loginSection");
         const dashboardSection = document.getElementById("dashboardSection");
         const navUserSection = document.getElementById("navUserSection");
         const navUserEmail = document.getElementById("navUserEmail");
+        const navDocCountBadge = document.getElementById("navDocCountBadge");
         const loginAlert = document.getElementById("loginAlert");
         const loginAlertText = document.getElementById("loginAlertText");
         const loginBtn = document.getElementById("loginBtn");
@@ -369,6 +651,35 @@
         const toast = document.getElementById("toast");
         const toastMsg = document.getElementById("toastMsg");
         const toastIcon = document.getElementById("toastIcon");
+
+        // Doctor Directory Modal Elements
+        const doctorDirectoryModal = document.getElementById("doctorDirectoryModal");
+        const docDirectoryCount = document.getElementById("docDirectoryCount");
+        const docDirectorySearch = document.getElementById("docDirectorySearch");
+        const docDirectoryList = document.getElementById("docDirectoryList");
+        const docFormTitle = document.getElementById("docFormTitle");
+        const docFormId = document.getElementById("docFormId");
+        const docNameInput = document.getElementById("docNameInput");
+        const docPhoneInput = document.getElementById("docPhoneInput");
+        const docHospitalInput = document.getElementById("docHospitalInput");
+        const saveDocBtn = document.getElementById("saveDocBtn");
+        const saveDocBtnText = document.getElementById("saveDocBtnText");
+        const cancelEditDocBtn = document.getElementById("cancelEditDocBtn");
+
+        // WhatsApp Share Modal Elements
+        const whatsappShareModal = document.getElementById("whatsappShareModal");
+        const waModalPatientId = document.getElementById("waModalPatientId");
+        const waModalPatientName = document.getElementById("waModalPatientName");
+        const waModalScanSummary = document.getElementById("waModalScanSummary");
+        const waModalVisitDate = document.getElementById("waModalVisitDate");
+        const waModalDocSelect = document.getElementById("waModalDocSelect");
+        const waModalDocBadge = document.getElementById("waModalDocBadge");
+        const waModalPhoneInput = document.getElementById("waModalPhoneInput");
+        const waModalCustomDocContainer = document.getElementById("waModalCustomDocContainer");
+        const waModalCustomDocName = document.getElementById("waModalCustomDocName");
+        const waModalBindNotice = document.getElementById("waModalBindNotice");
+        const waModalBindNoticeText = document.getElementById("waModalBindNoticeText");
+        const waModalMessagePreview = document.getElementById("waModalMessagePreview");
 
         function showToast(message, isError = false) {
             toastMsg.textContent = message;
@@ -397,6 +708,7 @@
         // Initialize Application
         window.addEventListener("DOMContentLoaded", () => {
             datePicker.value = getTodayString();
+            loadDoctorsDirectory();
             checkExistingSession();
         });
 
@@ -409,6 +721,7 @@
                     if (session && session.access_token) {
                         currentSession = session;
                         showDashboard();
+                        loadDoctorsDirectory();
                         loadAllReports();
                         return;
                     }
@@ -467,6 +780,7 @@
                 currentSession = data;
                 localStorage.setItem("babyscan_admin_session", JSON.stringify(data));
                 showDashboard();
+                loadDoctorsDirectory();
                 loadAllReports();
 
             } catch (err) {
@@ -617,12 +931,18 @@
                         first_name: r.first_name || "",
                         last_name: r.last_name || "",
                         visit_date: r.visit_date || "—",
+                        referring_doctor: r.referring_doctor || "",
                         created_at: r.created_at,
                         reports: []
                     });
                 }
 
                 const group = groupsMap.get(groupKey);
+
+                // Update referring_doctor if available in this scan report
+                if (!group.referring_doctor && r.referring_doctor) {
+                    group.referring_doctor = r.referring_doctor;
+                }
 
                 // Update with better ID if current is generic and this record has a real ID
                 if ((group.file_id === "—" || group.file_id === "UNKNOWN" || group.file_id.startsWith("MEDIA") || group.file_id.startsWith("SCAN")) && !isGenericId) {
@@ -792,6 +1112,27 @@
                 const is24hActive = new Date(group.created_at) >= twentyFourHoursAgo;
                 const initials = getInitials(group.patient_name);
 
+                // Determine pre-selected doctor:
+                const savedDocId = localStorage.getItem(`babyscan_patient_doc_${group.file_id}`);
+                let activeDocId = "";
+                let activePhone = "";
+                const reportDocName = group.referring_doctor || "";
+
+                if (savedDocId && referringDoctorsCache.some(d => d.id === savedDocId)) {
+                    activeDocId = savedDocId;
+                    const found = referringDoctorsCache.find(d => d.id === savedDocId);
+                    if (found && found.phone) activePhone = found.phone;
+                } else if (reportDocName) {
+                    const matched = findDoctorInDirectory(reportDocName);
+                    if (matched) {
+                        activeDocId = matched.id;
+                        if (matched.phone) activePhone = matched.phone;
+                    }
+                }
+
+                // If doctor exists in report but not directory, we flag it so we can include it in dropdown
+                const isUnregisteredReportDoc = reportDocName && !activeDocId;
+
                 const card = document.createElement("div");
                 card.className = "bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden transition-all duration-200 hover:border-slate-300";
 
@@ -821,6 +1162,17 @@
 
                         <!-- Right: Quick Actions + Accordion Chevron -->
                         <div class="flex items-center gap-2 self-end md:self-auto">
+                            <!-- WhatsApp Share to Referring Consultant -->
+                            <button 
+                                id="btn-wa-patient-${pIdx}"
+                                onclick="event.stopPropagation(); openWhatsAppModalForGroup(${pIdx})"
+                                class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                                title="Send WhatsApp report notification to referring consultant"
+                            >
+                                <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
+                                <span>WhatsApp</span>
+                            </button>
+
                             <!-- Download All Patient Scans as ZIP -->
                             <button 
                                 id="btn-zip-patient-${pIdx}"
@@ -866,6 +1218,59 @@
                                     ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-circle text-[6px]"></i> Patient Active (24h Window)</span>` 
                                     : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 text-slate-600 border border-slate-300"><i class="fa-solid fa-lock text-[8px]"></i> Doctor Cloud Archive</span>`
                                 }
+                            </div>
+                        </div>
+
+                        <!-- Referring Consultant WhatsApp Action Bar -->
+                        <div class="px-5 py-3.5 bg-gradient-to-r from-emerald-50/70 via-teal-50/50 to-slate-50 border-b border-emerald-100/80 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div class="flex flex-wrap items-center gap-2.5 flex-grow">
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <div class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs shadow-2xs">
+                                        <i class="fa-brands fa-whatsapp"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-slate-800">Referring Doctor:</span>
+                                </div>
+                                <div class="min-w-[180px] max-w-[240px] flex-grow">
+                                    <select 
+                                        id="card-doc-select-${pIdx}"
+                                        onchange="onCardDoctorSelected(${pIdx}, this.value)"
+                                        class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                                    >
+                                        <option value="">-- Choose Consultant --</option>
+                                        ${isUnregisteredReportDoc ? `<option value="REPORT_DOC" selected>${escapeHTML(reportDocName)} (From Report)</option>` : ''}
+                                        ${referringDoctorsCache.map(d => `<option value="${d.id}" ${d.id === activeDocId ? 'selected' : ''}>${escapeHTML(d.name)} ${d.hospital ? `(${escapeHTML(d.hospital)})` : ''}</option>`).join('')}
+                                        <option value="CUSTOM" ${activeDocId === 'CUSTOM' ? 'selected' : ''}>➕ Custom Number...</option>
+                                    </select>
+                                </div>
+                                <div class="relative min-w-[140px] max-w-[170px]">
+                                    <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center text-emerald-600 font-bold text-[11px] pointer-events-none">+91</span>
+                                    <input 
+                                        type="tel"
+                                        id="card-phone-input-${pIdx}"
+                                        value="${activePhone}"
+                                        oninput="onCardPhoneInput(${pIdx}, this.value)"
+                                        placeholder="Enter mobile number"
+                                        class="w-full pl-8 pr-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs placeholder:text-slate-400 placeholder:font-normal"
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 self-end md:self-auto shrink-0">
+                                <button 
+                                    onclick="copyCardWhatsAppText(${pIdx})"
+                                    class="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all"
+                                    title="Copy formatted WhatsApp message to clipboard"
+                                >
+                                    <i class="fa-regular fa-copy text-slate-500"></i>
+                                    <span>Copy Text</span>
+                                </button>
+                                <button 
+                                    onclick="sendCardWhatsApp(${pIdx})"
+                                    class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all"
+                                    title="Send WhatsApp message directly to consultant"
+                                >
+                                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                                    <span>Send WhatsApp</span>
+                                </button>
                             </div>
                         </div>
 
@@ -1265,6 +1670,832 @@
                 zipBtn.disabled = false;
                 zipBtn.innerHTML = `<i class="fa-solid fa-file-zipper"></i> <span>Download Day ZIP</span>`;
             }
+        }
+
+        // =========================================================================
+        // 🩺 REFERRING DOCTORS DIRECTORY MANAGEMENT
+        // =========================================================================
+        async function loadDoctorsDirectory() {
+            // 1. Instant fallback to LocalStorage
+            try {
+                const stored = localStorage.getItem("babyscan_referring_doctors");
+                if (stored) {
+                    referringDoctorsCache = JSON.parse(stored) || [];
+                    updateDoctorBadges();
+                }
+            } catch (e) {
+                console.warn("Local doctors cache parse error:", e);
+            }
+
+            // 2. Cloud Sync if Authenticated
+            if (currentSession && currentSession.access_token) {
+                try {
+                    const res = await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors?order=name.asc`, {
+                        method: "GET",
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": `Bearer ${currentSession.access_token}`,
+                            "Accept": "application/json"
+                        }
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data)) {
+                            referringDoctorsCache = data;
+                            localStorage.setItem("babyscan_referring_doctors", JSON.stringify(data));
+                            updateDoctorBadges();
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Supabase doctors fetch note (using local cache):", err.message);
+                }
+            }
+            updateDoctorBadges();
+        }
+
+        function updateDoctorBadges() {
+            const count = referringDoctorsCache.length;
+            if (navDocCountBadge) navDocCountBadge.textContent = count;
+            if (docDirectoryCount) docDirectoryCount.textContent = `${count} Doctor${count === 1 ? '' : 's'}`;
+        }
+
+        function openDoctorDirectoryModal() {
+            doctorDirectoryModal.classList.remove("hidden");
+            cancelDoctorEdit();
+            renderDoctorDirectoryList();
+        }
+
+        function closeDoctorDirectoryModal() {
+            doctorDirectoryModal.classList.add("hidden");
+            cancelDoctorEdit();
+        }
+
+        function renderDoctorDirectoryList() {
+            const query = (docDirectorySearch.value || "").trim().toLowerCase();
+            let list = [...referringDoctorsCache];
+
+            if (query) {
+                list = list.filter(d => 
+                    (d.name || "").toLowerCase().includes(query) ||
+                    (d.phone || "").toLowerCase().includes(query) ||
+                    (d.hospital || "").toLowerCase().includes(query)
+                );
+            }
+
+            // Sort alphabetically by name
+            list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+            if (list.length === 0) {
+                docDirectoryList.innerHTML = `
+                    <div class="py-8 text-center text-slate-400 space-y-1">
+                        <i class="fa-solid fa-user-doctor text-2xl text-slate-300 mb-1"></i>
+                        <p class="text-xs font-semibold text-slate-600">No referring doctors found</p>
+                        <p class="text-[11px] text-slate-400">Use the form above to add your first referring consultant.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            docDirectoryList.innerHTML = list.map(doc => {
+                const initials = getInitials(doc.name);
+                const cleanPhone = normalizePhoneNumber(doc.phone);
+                return `
+                    <div class="p-3 bg-white hover:bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-xl bg-babyscan-50 text-babyscan-800 border border-babyscan-200/60 flex items-center justify-center font-extrabold text-xs shadow-2xs shrink-0">
+                                ${initials}
+                            </div>
+                            <div>
+                                <h5 class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                                    ${escapeHTML(doc.name)}
+                                </h5>
+                                <p class="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                                    ${doc.hospital ? `<span><i class="fa-regular fa-hospital text-slate-400 mr-1"></i>${escapeHTML(doc.hospital)}</span> • ` : ''}
+                                    <span class="font-mono text-emerald-700 font-bold"><i class="fa-brands fa-whatsapp text-emerald-600 mr-1"></i>+${cleanPhone}</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button 
+                                onclick="testDoctorWhatsApp('${cleanPhone}', '${escapeHTML(doc.name)}')" 
+                                class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                                title="Open WhatsApp Chat Test"
+                            >
+                                <i class="fa-brands fa-whatsapp text-emerald-600"></i>
+                                <span class="hidden sm:inline">Chat</span>
+                            </button>
+
+                            <button 
+                                onclick="editDoctorInDirectory('${doc.id}')" 
+                                class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                                title="Edit Doctor Details"
+                            >
+                                <i class="fa-solid fa-pen-to-square text-slate-500"></i>
+                                <span class="hidden sm:inline">Edit</span>
+                            </button>
+
+                            <button 
+                                onclick="deleteDoctorFromDirectory('${doc.id}', '${escapeHTML(doc.name)}')" 
+                                class="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                                title="Delete Doctor"
+                            >
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function handleSaveDoctorForm() {
+            let name = docNameInput.value.trim();
+            const rawPhone = docPhoneInput.value.trim();
+            const hospital = docHospitalInput.value.trim();
+            const docId = docFormId.value;
+
+            if (!name) {
+                alert("Please enter Doctor Name");
+                docNameInput.focus();
+                return;
+            }
+            if (!name.toLowerCase().startsWith("dr")) {
+                name = `Dr. ${name}`;
+            }
+
+            if (!rawPhone) {
+                alert("Please enter WhatsApp Phone Number");
+                docPhoneInput.focus();
+                return;
+            }
+
+            const cleanPhone = normalizePhoneNumber(rawPhone);
+            if (cleanPhone.length < 10) {
+                alert("Please enter a valid 10-digit mobile number");
+                docPhoneInput.focus();
+                return;
+            }
+
+            saveDocBtn.disabled = true;
+            saveDocBtnText.textContent = "Saving...";
+
+            try {
+                let doctorRecord = {
+                    name,
+                    phone: cleanPhone,
+                    hospital
+                };
+
+                if (docId) {
+                    // Update existing doctor
+                    doctorRecord.id = docId;
+
+                    // 1. Cloud update
+                    if (currentSession && currentSession.access_token) {
+                        try {
+                            await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors?id=eq.${docId}`, {
+                                method: "PATCH",
+                                headers: {
+                                    "apikey": SUPABASE_ANON_KEY,
+                                    "Authorization": `Bearer ${currentSession.access_token}`,
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify(doctorRecord)
+                            });
+                        } catch (e) {
+                            console.warn("Supabase doctor update error:", e);
+                        }
+                    }
+
+                    // 2. Local update
+                    const idx = referringDoctorsCache.findIndex(d => d.id === docId);
+                    if (idx >= 0) {
+                        referringDoctorsCache[idx] = { ...referringDoctorsCache[idx], ...doctorRecord };
+                    }
+                    showToast(`Updated ${name}`);
+                } else {
+                    // Add new doctor
+                    const newId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`;
+                    doctorRecord.id = newId;
+                    doctorRecord.created_at = new Date().toISOString();
+
+                    // 1. Cloud insert
+                    if (currentSession && currentSession.access_token) {
+                        try {
+                            const res = await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors`, {
+                                method: "POST",
+                                headers: {
+                                    "apikey": SUPABASE_ANON_KEY,
+                                    "Authorization": `Bearer ${currentSession.access_token}`,
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify(doctorRecord)
+                            });
+                            if (res.ok) {
+                                const inserted = await res.json();
+                                if (Array.isArray(inserted) && inserted[0]) {
+                                    doctorRecord = inserted[0];
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Supabase doctor insert error:", e);
+                        }
+                    }
+
+                    referringDoctorsCache.push(doctorRecord);
+                    showToast(`Added ${name} to Directory`);
+                }
+
+                // Persist to LocalStorage
+                localStorage.setItem("babyscan_referring_doctors", JSON.stringify(referringDoctorsCache));
+                updateDoctorBadges();
+                cancelDoctorEdit();
+                renderDoctorDirectoryList();
+                applyFilterAndRender(); // Update patient cards with new doctor options
+
+            } catch (err) {
+                console.error("Save doctor error:", err);
+                alert("Could not save doctor: " + err.message);
+            } finally {
+                saveDocBtn.disabled = false;
+                saveDocBtnText.textContent = "Save Doctor to Directory";
+            }
+        }
+
+        function editDoctorInDirectory(id) {
+            const doc = referringDoctorsCache.find(d => d.id === id);
+            if (!doc) return;
+
+            docFormId.value = doc.id;
+            docNameInput.value = doc.name || "";
+            docPhoneInput.value = doc.phone || "";
+            docHospitalInput.value = doc.hospital || "";
+
+            docFormTitle.innerHTML = `<i class="fa-solid fa-pen-to-square text-babyscan-600"></i> Edit Referring Doctor`;
+            saveDocBtnText.textContent = "Update Doctor";
+            cancelEditDocBtn.classList.remove("hidden");
+            docNameInput.focus();
+        }
+
+        function cancelDoctorEdit() {
+            docFormId.value = "";
+            docNameInput.value = "";
+            docPhoneInput.value = "";
+            docHospitalInput.value = "";
+            docFormTitle.innerHTML = `<i class="fa-solid fa-user-plus text-babyscan-600"></i> Add New Referring Doctor`;
+            saveDocBtnText.textContent = "Save Doctor to Directory";
+            cancelEditDocBtn.classList.add("hidden");
+        }
+
+        async function deleteDoctorFromDirectory(id, docName) {
+            const confirmed = confirm(`Are you sure you want to remove ${docName} from the referring doctors directory?`);
+            if (!confirmed) return;
+
+            // 1. Cloud delete
+            if (currentSession && currentSession.access_token) {
+                try {
+                    await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors?id=eq.${id}`, {
+                        method: "DELETE",
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": `Bearer ${currentSession.access_token}`
+                        }
+                    });
+                } catch (e) {
+                    console.warn("Supabase doctor delete error:", e);
+                }
+            }
+
+            // 2. Local delete
+            referringDoctorsCache = referringDoctorsCache.filter(d => d.id !== id);
+            localStorage.setItem("babyscan_referring_doctors", JSON.stringify(referringDoctorsCache));
+            updateDoctorBadges();
+            renderDoctorDirectoryList();
+            applyFilterAndRender();
+            showToast(`Deleted ${docName}`);
+        }
+
+        function testDoctorWhatsApp(phone, docName) {
+            const testMsg = `Greetings from Baby Scan Fetal Medicine & Gynec Imaging (Dr. Maulik Patel).\n\nHello ${docName}, this is a verification test message from our clinic portal.`;
+            openWhatsAppUrl(phone, testMsg);
+        }
+
+        // =========================================================================
+        // 💬 WHATSAPP REPORT MESSAGE BUILDER & DOCTOR AUTO-BIND UTILS
+        // =========================================================================
+
+        function normalizePhoneNumber(rawPhone) {
+            if (!rawPhone) return "";
+            let digits = rawPhone.replace(/\D/g, "");
+            // If 10 digits (Standard Indian Mobile e.g. 9898012345), prefix with 91
+            if (digits.length === 10) {
+                return `91${digits}`;
+            }
+            // If 11 digits starting with 0 (e.g. 09898012345)
+            if (digits.length === 11 && digits.startsWith("0")) {
+                return `91${digits.slice(1)}`;
+            }
+            // If already has 91 (e.g. 919898012345) or international format
+            return digits;
+        }
+
+        function normalizeDocName(name) {
+            if (!name) return "";
+            return name.toLowerCase()
+                .replace(/^(dr\.?|doctor)\s*/i, "")
+                .replace(/[^a-z0-9]/g, "")
+                .trim();
+        }
+
+        function findDoctorInDirectory(rawName) {
+            if (!rawName) return null;
+            const normInput = normalizeDocName(rawName);
+            if (!normInput) return null;
+            return referringDoctorsCache.find(d => {
+                const normExisting = normalizeDocName(d.name);
+                return normExisting === normInput || normExisting.includes(normInput) || normInput.includes(normExisting);
+            }) || null;
+        }
+
+        async function autoBindDoctorPhoneToSupabase(docName, rawPhone, hospital = "") {
+            if (!docName || !rawPhone) return null;
+
+            let cleanName = docName.trim();
+            if (!cleanName.toLowerCase().startsWith("dr")) {
+                cleanName = `Dr. ${cleanName}`;
+            }
+
+            const cleanPhone = normalizePhoneNumber(rawPhone);
+            if (!cleanPhone || cleanPhone.length < 10) return null;
+
+            const existingDoc = findDoctorInDirectory(cleanName);
+
+            if (existingDoc) {
+                if (existingDoc.phone === cleanPhone) return existingDoc; // Already saved with this number
+
+                existingDoc.phone = cleanPhone;
+                if (hospital && !existingDoc.hospital) existingDoc.hospital = hospital;
+
+                // Persist to Supabase
+                if (currentSession && currentSession.access_token) {
+                    try {
+                        await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors?id=eq.${existingDoc.id}`, {
+                            method: "PATCH",
+                            headers: {
+                                "apikey": SUPABASE_ANON_KEY,
+                                "Authorization": `Bearer ${currentSession.access_token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({ phone: cleanPhone, hospital: existingDoc.hospital || "" })
+                        });
+                    } catch (e) {
+                        console.warn("Supabase doctor phone update:", e);
+                    }
+                }
+                showToast(`Saved phone number for ${cleanName}`);
+            } else {
+                // Create new doctor entry
+                const newId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `doc_${Date.now()}`;
+                const newDoc = {
+                    id: newId,
+                    name: cleanName,
+                    phone: cleanPhone,
+                    hospital: hospital || "",
+                    created_at: new Date().toISOString()
+                };
+                referringDoctorsCache.unshift(newDoc);
+
+                if (currentSession && currentSession.access_token) {
+                    try {
+                        await fetch(`${SUPABASE_URL}/rest/v1/referring_doctors`, {
+                            method: "POST",
+                            headers: {
+                                "apikey": SUPABASE_ANON_KEY,
+                                "Authorization": `Bearer ${currentSession.access_token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(newDoc)
+                        });
+                    } catch (e) {
+                        console.warn("Supabase doctor creation:", e);
+                    }
+                }
+                showToast(`Saved ${cleanName} to Directory`);
+            }
+
+            localStorage.setItem("babyscan_referring_doctors", JSON.stringify(referringDoctorsCache));
+            updateDoctorBadges();
+            renderDoctorDirectoryList();
+            return existingDoc || referringDoctorsCache[0];
+        }
+
+        function buildScanListSummary(reports) {
+            if (!reports || reports.length === 0) return "Ultrasound Report";
+
+            const titles = [];
+            const seen = new Set();
+
+            reports.forEach(r => {
+                const s = (r.study_type || "").trim().toUpperCase();
+                let label = "";
+
+                if (s.includes("GROWTH") || s.includes("CHART") || s.includes("GRAPH")) {
+                    label = "Growth Charts";
+                } else if (s.includes("3D") || s.includes("4D")) {
+                    label = "3D Fetal Photo";
+                } else if (s.includes("2D")) {
+                    label = "2D Image Sheet";
+                } else if (s.includes("ECHO")) {
+                    label = "Fetal Echo Report";
+                } else if (s.includes("DOPPLER")) {
+                    label = "Doppler Scan Report";
+                } else if (s.includes("PELVIC") || s.includes("PELVIS")) {
+                    label = "Pelvic Scan Report";
+                } else if (s.includes("FOLLICULAR")) {
+                    label = "Follicular Study Report";
+                } else if (s.includes("TARGET") || s.includes("ANOMALY")) {
+                    label = "Target Scan Report";
+                } else if (s.includes("NT") || s.includes("NB")) {
+                    label = "NT/NB Scan Report";
+                } else if (s.includes("EARLY") || s.includes("VIABILITY")) {
+                    label = "Early Pregnancy Scan";
+                } else {
+                    label = r.study_type.split(" ")
+                        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                        .join(" ");
+                    if (!label.toLowerCase().includes("report") && !label.toLowerCase().includes("sheet") && !label.toLowerCase().includes("chart")) {
+                        label += " Report";
+                    }
+                }
+
+                if (label && !seen.has(label)) {
+                    seen.add(label);
+                    titles.push(label);
+                }
+            });
+
+            return titles.join(" + ");
+        }
+
+        function generateWhatsAppMessage(patientGroup, doctorName = "") {
+            const patientName = patientGroup.patient_name || "Patient";
+            const visitDate = patientGroup.visit_date && patientGroup.visit_date !== "—" ? patientGroup.visit_date : formatUploadDateOnly(patientGroup.created_at);
+            const scansSummary = buildScanListSummary(patientGroup.reports);
+
+            return `Greetings from Baby Scan Fetal Medicine & Gynec Imaging.
+
+Ultrasound report for your referred patient:
+👤 Patient: ${patientName}
+📅 Date: ${visitDate}
+🩺 Scans: ${scansSummary}
+
+Thank you for your kind referral!
+— Dr. Maulik Patel
+Baby Scan Fetal Medicine Center`;
+        }
+
+        function formatUploadDateOnly(isoStr) {
+            if (!isoStr) return getTodayFormatted();
+            try {
+                const d = new Date(isoStr);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return `${day}/${month}/${year}`;
+            } catch (e) {
+                return getTodayFormatted();
+            }
+        }
+
+        function getTodayFormatted() {
+            const d = new Date();
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+
+        function openWhatsAppUrl(phone, messageText) {
+            const cleanPhone = normalizePhoneNumber(phone);
+            const encodedText = encodeURIComponent(messageText);
+            let url = "";
+
+            if (cleanPhone) {
+                url = `https://wa.me/${cleanPhone}?text=${encodedText}`;
+            } else {
+                url = `https://wa.me/?text=${encodedText}`;
+            }
+
+            window.open(url, "_blank");
+        }
+
+        // =========================================================================
+        // 📱 WHATSAPP MODAL & CARD ACTIONS
+        // =========================================================================
+
+        function openWhatsAppModalForGroup(pIdx) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group) return;
+
+            currentWhatsAppPatientGroup = group;
+
+            waModalPatientId.textContent = group.file_id || "—";
+            waModalPatientName.textContent = group.patient_name || "Patient";
+            const vDate = group.visit_date && group.visit_date !== "—" ? group.visit_date : formatUploadDateOnly(group.created_at);
+            waModalVisitDate.textContent = vDate;
+            waModalScanSummary.innerHTML = `<i class="fa-solid fa-stethoscope mr-1 text-emerald-600"></i> ${escapeHTML(buildScanListSummary(group.reports))}`;
+
+            // Populate Doctors Select
+            populateWhatsAppModalDoctors(group);
+            updateWhatsAppPreview();
+
+            whatsappShareModal.classList.remove("hidden");
+        }
+
+        function closeWhatsAppModal() {
+            whatsappShareModal.classList.add("hidden");
+            currentWhatsAppPatientGroup = null;
+        }
+
+        function populateWhatsAppModalDoctors(group) {
+            waModalDocSelect.innerHTML = `<option value="">-- Choose Referring Consultant --</option>`;
+            if (waModalCustomDocContainer) waModalCustomDocContainer.classList.add("hidden");
+            if (waModalCustomDocName) waModalCustomDocName.value = "";
+
+            const reportDoc = (group.referring_doctor || "").trim();
+            const savedDocId = localStorage.getItem(`babyscan_patient_doc_${group.file_id}`);
+
+            let matchedDoc = null;
+            if (savedDocId) {
+                matchedDoc = referringDoctorsCache.find(d => d.id === savedDocId) || null;
+            }
+            if (!matchedDoc && reportDoc) {
+                matchedDoc = findDoctorInDirectory(reportDoc);
+            }
+
+            // If report has a doctor not in directory, add it as first selected option
+            if (reportDoc && !matchedDoc) {
+                const reportOpt = document.createElement("option");
+                reportOpt.value = "REPORT_DOC";
+                reportOpt.textContent = `${reportDoc} (From Report)`;
+                reportOpt.selected = true;
+                waModalDocSelect.appendChild(reportOpt);
+            }
+
+            referringDoctorsCache.forEach(doc => {
+                const opt = document.createElement("option");
+                opt.value = doc.id;
+                const phoneDisplay = doc.phone ? ` - +${normalizePhoneNumber(doc.phone)}` : ' (No phone saved)';
+                opt.textContent = `${doc.name} ${doc.hospital ? `(${doc.hospital})` : ''}${phoneDisplay}`;
+                if (matchedDoc && matchedDoc.id === doc.id) {
+                    opt.selected = true;
+                }
+                waModalDocSelect.appendChild(opt);
+            });
+
+            const customOpt = document.createElement("option");
+            customOpt.value = "CUSTOM";
+            customOpt.textContent = "➕ Enter Custom Doctor / Number...";
+            waModalDocSelect.appendChild(customOpt);
+
+            // Update phone input and directory status badge
+            updateWhatsAppModalDoctorState(matchedDoc, reportDoc);
+        }
+
+        function updateWhatsAppModalDoctorState(matchedDoc, reportDoc) {
+            if (matchedDoc && matchedDoc.phone) {
+                // Case A: Doctor is saved in directory WITH phone
+                waModalPhoneInput.value = matchedDoc.phone;
+                waModalDocBadge.className = "text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200";
+                waModalDocBadge.innerHTML = `<i class="fa-solid fa-check mr-1"></i> Saved in Directory`;
+                waModalDocBadge.classList.remove("hidden");
+                waModalBindNoticeText.innerHTML = `Loaded phone number for <strong>${escapeHTML(matchedDoc.name)}</strong>.`;
+            } else if (matchedDoc && !matchedDoc.phone) {
+                // Case B: Doctor in directory but phone is empty
+                waModalPhoneInput.value = "";
+                waModalPhoneInput.placeholder = "Enter 10-digit mobile number";
+                waModalDocBadge.className = "text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200";
+                waModalDocBadge.innerHTML = `<i class="fa-solid fa-circle-info mr-1"></i> Phone Missing`;
+                waModalDocBadge.classList.remove("hidden");
+                waModalBindNoticeText.innerHTML = `Entering mobile number will auto-bind to <strong>${escapeHTML(matchedDoc.name)}</strong> in Supabase.`;
+            } else if (reportDoc) {
+                // Case C: Doctor extracted from report, not yet in directory
+                waModalPhoneInput.value = "";
+                waModalPhoneInput.placeholder = "Enter 10-digit mobile number";
+                waModalDocBadge.className = "text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200";
+                waModalDocBadge.innerHTML = `<i class="fa-solid fa-circle-info mr-1"></i> New Doctor`;
+                waModalDocBadge.classList.remove("hidden");
+                waModalBindNoticeText.innerHTML = `Entering mobile number will auto-bind to <strong>${escapeHTML(reportDoc)}</strong> in Supabase.`;
+            } else {
+                // Case D: No doctor selected
+                waModalPhoneInput.value = "";
+                waModalPhoneInput.placeholder = "Enter 10-digit mobile number";
+                waModalDocBadge.classList.add("hidden");
+                waModalBindNoticeText.innerHTML = `Mobile numbers entered here will automatically bind to the doctor in Supabase.`;
+            }
+        }
+
+        function onWhatsAppModalDoctorSelected() {
+            const val = waModalDocSelect.value;
+            if (val === "CUSTOM") {
+                if (waModalCustomDocContainer) waModalCustomDocContainer.classList.remove("hidden");
+                waModalPhoneInput.value = "";
+                waModalPhoneInput.placeholder = "Enter 10-digit mobile number";
+                waModalDocBadge.classList.add("hidden");
+                waModalBindNoticeText.innerHTML = `Entering a doctor name & number will save to Supabase directory.`;
+                if (waModalCustomDocName) waModalCustomDocName.focus();
+            } else {
+                if (waModalCustomDocContainer) waModalCustomDocContainer.classList.add("hidden");
+                if (val === "REPORT_DOC") {
+                    const reportDoc = currentWhatsAppPatientGroup ? (currentWhatsAppPatientGroup.referring_doctor || "") : "";
+                    updateWhatsAppModalDoctorState(null, reportDoc);
+                } else if (val) {
+                    const doc = referringDoctorsCache.find(d => d.id === val);
+                    if (doc) {
+                        updateWhatsAppModalDoctorState(doc, null);
+                        if (currentWhatsAppPatientGroup) {
+                            localStorage.setItem(`babyscan_patient_doc_${currentWhatsAppPatientGroup.file_id}`, doc.id);
+                        }
+                    }
+                } else {
+                    updateWhatsAppModalDoctorState(null, null);
+                }
+            }
+            updateWhatsAppPreview();
+        }
+
+        function onWhatsAppModalPhoneInput(val) {
+            updateWhatsAppPreview();
+            const clean = normalizePhoneNumber(val);
+            if (clean && clean.length >= 10) {
+                let docName = getSelectedDoctorNameInModal();
+                if (docName) {
+                    waModalBindNoticeText.innerHTML = `<span class="text-emerald-700 font-bold"><i class="fa-solid fa-cloud-arrow-up mr-1"></i> Ready to bind +${clean} to ${escapeHTML(docName)}</span>`;
+                }
+            }
+        }
+
+        function getSelectedDoctorNameInModal() {
+            const val = waModalDocSelect.value;
+            if (val === "CUSTOM") {
+                return waModalCustomDocName ? waModalCustomDocName.value.trim() : "";
+            } else if (val === "REPORT_DOC") {
+                return currentWhatsAppPatientGroup ? (currentWhatsAppPatientGroup.referring_doctor || "").trim() : "";
+            } else if (val) {
+                const doc = referringDoctorsCache.find(d => d.id === val);
+                return doc ? doc.name : "";
+            }
+            return currentWhatsAppPatientGroup ? (currentWhatsAppPatientGroup.referring_doctor || "").trim() : "";
+        }
+
+        function updateWhatsAppPreview() {
+            if (!currentWhatsAppPatientGroup) return;
+            const docName = getSelectedDoctorNameInModal();
+            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
+            waModalMessagePreview.textContent = msg;
+        }
+
+        async function sendWhatsAppFromModal() {
+            if (!currentWhatsAppPatientGroup) return;
+            const phone = waModalPhoneInput.value.trim();
+            const docName = getSelectedDoctorNameInModal();
+
+            // Auto-bind to Supabase if valid mobile number and doctor name are present
+            if (docName && phone && normalizePhoneNumber(phone).length >= 10) {
+                try {
+                    await autoBindDoctorPhoneToSupabase(docName, phone);
+                } catch (e) {
+                    console.warn("Auto-bind note:", e);
+                }
+            }
+
+            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
+            openWhatsAppUrl(phone, msg);
+            showToast(`Opened WhatsApp for ${currentWhatsAppPatientGroup.patient_name}`);
+        }
+
+        function copyWhatsAppModalText() {
+            if (!currentWhatsAppPatientGroup) return;
+            const docName = getSelectedDoctorNameInModal();
+            const msg = generateWhatsAppMessage(currentWhatsAppPatientGroup, docName);
+
+            copyToClipboard(msg, "Copied WhatsApp message to clipboard!");
+        }
+
+        // Inline Patient Card Combobox Handlers
+        function onCardDoctorSelected(pIdx, docId) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group) return;
+
+            const phoneInput = document.getElementById(`card-phone-input-${pIdx}`);
+            if (!phoneInput) return;
+
+            if (docId === "CUSTOM") {
+                phoneInput.value = "";
+                phoneInput.placeholder = "Enter mobile number";
+                phoneInput.focus();
+            } else if (docId === "REPORT_DOC") {
+                phoneInput.value = "";
+                phoneInput.placeholder = "Enter mobile number";
+            } else if (docId) {
+                const doc = referringDoctorsCache.find(d => d.id === docId);
+                if (doc) {
+                    phoneInput.value = doc.phone || "";
+                    phoneInput.placeholder = doc.phone ? "" : "Enter mobile number";
+                    localStorage.setItem(`babyscan_patient_doc_${group.file_id}`, doc.id);
+                }
+            } else {
+                phoneInput.value = "";
+                phoneInput.placeholder = "Enter mobile number";
+            }
+        }
+
+        function onCardPhoneInput(pIdx, val) {
+            // Live typing handler
+        }
+
+        async function sendCardWhatsApp(pIdx) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group) return;
+
+            const phoneInput = document.getElementById(`card-phone-input-${pIdx}`);
+            const select = document.getElementById(`card-doc-select-${pIdx}`);
+
+            const phone = phoneInput ? phoneInput.value.trim() : "";
+            const val = select ? select.value : "";
+
+            let docName = "";
+            if (val === "REPORT_DOC") {
+                docName = group.referring_doctor || "";
+            } else if (val && val !== "CUSTOM") {
+                const doc = referringDoctorsCache.find(d => d.id === val);
+                if (doc) docName = doc.name;
+            } else if (group.referring_doctor) {
+                docName = group.referring_doctor;
+            }
+
+            // Auto-bind to Supabase if valid mobile number and doctor name are present
+            if (docName && phone && normalizePhoneNumber(phone).length >= 10) {
+                try {
+                    await autoBindDoctorPhoneToSupabase(docName, phone);
+                } catch (e) {
+                    console.warn("Auto-bind note:", e);
+                }
+            }
+
+            const msg = generateWhatsAppMessage(group, docName);
+            openWhatsAppUrl(phone, msg);
+            showToast(`Opened WhatsApp for ${group.patient_name}`);
+        }
+
+        function copyCardWhatsAppText(pIdx) {
+            const group = window.currentPatientGroups[pIdx];
+            if (!group) return;
+
+            const select = document.getElementById(`card-doc-select-${pIdx}`);
+            const val = select ? select.value : "";
+            let docName = "";
+            if (val === "REPORT_DOC") {
+                docName = group.referring_doctor || "";
+            } else if (val && val !== "CUSTOM") {
+                const doc = referringDoctorsCache.find(d => d.id === val);
+                if (doc) docName = doc.name;
+            } else if (group.referring_doctor) {
+                docName = group.referring_doctor;
+            }
+
+            const msg = generateWhatsAppMessage(group, docName);
+            copyToClipboard(msg, `Copied WhatsApp report message for ${group.patient_name}`);
+        }
+
+        function copyToClipboard(text, toastText) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast(toastText);
+                }).catch(() => {
+                    fallbackCopyText(text, toastText);
+                });
+            } else {
+                fallbackCopyText(text, toastText);
+            }
+        }
+
+        function fallbackCopyText(text, toastText) {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            try {
+                document.execCommand("copy");
+                showToast(toastText);
+            } catch (err) {
+                console.error("Fallback copy failed:", err);
+            }
+            document.body.removeChild(textarea);
         }
 
         function escapeHTML(str) {
