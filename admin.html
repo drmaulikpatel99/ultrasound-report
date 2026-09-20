@@ -847,16 +847,68 @@
             checkExistingSession();
         });
 
-        // 1. Session check on page load
-        function checkExistingSession() {
+        // 1. Session Refresh & Persistent Login Engine
+        async function refreshDoctorSession() {
+            if (!currentSession || !currentSession.refresh_token) {
+                return false;
+            }
+            try {
+                const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+                    method: "POST",
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ refresh_token: currentSession.refresh_token })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.access_token) {
+                        currentSession = {
+                            ...currentSession,
+                            ...data
+                        };
+                        localStorage.setItem("babyscan_admin_session", JSON.stringify(currentSession));
+                        console.log("[Admin] ⚡ Doctor session token successfully renewed.");
+                        return true;
+                    }
+                } else {
+                    console.warn("[Admin] Refresh token rejected with status:", res.status);
+                }
+            } catch (e) {
+                console.warn("[Admin] Session auto-refresh network notice:", e);
+            }
+            return false;
+        }
+
+        // Automatically renew session token every 30 minutes in background
+        setInterval(async () => {
+            if (currentSession && currentSession.refresh_token) {
+                await refreshDoctorSession();
+            }
+        }, 30 * 60 * 1000);
+
+        // 2. Session check on page load
+        async function checkExistingSession() {
             try {
                 const stored = localStorage.getItem("babyscan_admin_session");
                 if (stored) {
                     const session = JSON.parse(stored);
-                    if (session && session.access_token) {
+                    if (session && (session.access_token || session.refresh_token)) {
                         currentSession = session;
                         showDashboard();
                         loadDoctorsDirectory();
+
+                        // Proactively renew token in background on startup
+                        if (session.refresh_token) {
+                            try {
+                                await refreshDoctorSession();
+                            } catch (refErr) {
+                                console.warn("Startup token refresh note:", refErr);
+                            }
+                        }
+
                         loadAllReports();
                         return;
                     }
@@ -882,7 +934,7 @@
             }
         }
 
-        // 2. Login Handler
+        // 3. Login Handler
         async function handleLogin(e) {
             e.preventDefault();
             loginAlert.classList.add("hidden");
@@ -929,7 +981,7 @@
             }
         }
 
-        // 3. Logout
+        // 4. Logout
         function logout() {
             localStorage.removeItem("babyscan_admin_session");
             currentSession = null;
@@ -937,7 +989,7 @@
             showLogin();
         }
 
-        // 4. Fetch All Reports for Doctor (30 Days)
+        // 5. Fetch All Reports for Doctor (30 Days)
         async function loadAllReports(showToastNotice = false) {
             if (!currentSession || !currentSession.access_token) {
                 showLogin();
@@ -966,6 +1018,11 @@
                 });
 
                 if (res.status === 401 || res.status === 403) {
+                    // Try auto-renewing session before giving up
+                    const renewed = await refreshDoctorSession();
+                    if (renewed) {
+                        return await loadAllReports(showToastNotice);
+                    }
                     alert("Doctor session expired. Please sign in again.");
                     logout();
                     return;
