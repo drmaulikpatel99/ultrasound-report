@@ -953,8 +953,9 @@
             `;
 
             try {
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?order=created_at.desc`, {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?order=created_at.desc&t=${Date.now()}`, {
                     method: "GET",
+                    cache: "no-store",
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${currentSession.access_token}`,
@@ -1518,8 +1519,9 @@
 
             try {
                 const cleanPath = encodeURIComponent(storagePath).replace(/%2F/g, "/");
-                const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
                     method: "GET",
+                    cache: "no-store",
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${currentSession.access_token}`
@@ -1574,7 +1576,9 @@
                 for (const report of group.reports) {
                     try {
                         const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
-                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
+                            method: "GET",
+                            cache: "no-store",
                             headers: {
                                 "apikey": SUPABASE_ANON_KEY,
                                 "Authorization": `Bearer ${currentSession.access_token}`
@@ -1775,7 +1779,9 @@
                 for (const report of filteredReports) {
                     try {
                         const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
-                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}`, {
+                        const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
+                            method: "GET",
+                            cache: "no-store",
                             headers: {
                                 "apikey": SUPABASE_ANON_KEY,
                                 "Authorization": `Bearer ${currentSession.access_token}`
@@ -2705,6 +2711,7 @@ Baby Scan Fetal Medicine Center`;
                     const preMergedPath = `reports/${fileId}_COMPLETE_REPORT.pdf`;
                     const cleanPath = encodeURIComponent(preMergedPath).replace(/%2F/g, "/");
                     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
+                        cache: "no-store",
                         headers: {
                             "apikey": SUPABASE_ANON_KEY,
                             "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
@@ -2729,6 +2736,7 @@ Baby Scan Fetal Medicine Center`;
                 try {
                     const cleanPath = encodeURIComponent(targetReport.storage_path).replace(/%2F/g, "/");
                     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
+                        cache: "no-store",
                         headers: {
                             "apikey": SUPABASE_ANON_KEY,
                             "Authorization": currentSession && currentSession.access_token ? `Bearer ${currentSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
