@@ -732,10 +732,9 @@
         let allReportsCache = [];
         let cloudSearchResults = [];
         let searchDebounceTimer = null;
-        let filteredReports = [];
-        window.currentPatientGroups = [];
         let referringDoctorsCache = [];
         let currentWhatsAppPatientGroup = null;
+        const patientDocBindingsMap = new Map();
 
         // DOM elements
         const loginSection = document.getElementById("loginSection");
@@ -847,7 +846,6 @@
         // Initialize Application
         window.addEventListener("DOMContentLoaded", () => {
             datePicker.value = getTodayString();
-            loadDoctorsDirectory();
             checkExistingSession();
         });
 
@@ -1304,27 +1302,27 @@
             const selectedDate = datePicker.value; // 'YYYY-MM-DD' or ''
             const searchText = (searchFilter.value || "").trim().toLowerCase();
 
-            // Combine allReportsCache with any cloudSearchResults, deduping by id
-            const seenIds = new Set();
-            const combinedList = [];
-
-            for (const r of allReportsCache) {
-                if (!seenIds.has(r.id)) {
-                    seenIds.add(r.id);
-                    combinedList.push(r);
-                }
-            }
-
+            // Fast path: if no active search results to merge, use allReportsCache directly
+            let list;
             if (searchText && cloudSearchResults.length > 0) {
+                const seenIds = new Set();
+                const combinedList = [];
+                for (const r of allReportsCache) {
+                    if (!seenIds.has(r.id)) {
+                        seenIds.add(r.id);
+                        combinedList.push(r);
+                    }
+                }
                 for (const r of cloudSearchResults) {
                     if (!seenIds.has(r.id)) {
                         seenIds.add(r.id);
                         combinedList.push(r);
                     }
                 }
+                list = combinedList;
+            } else {
+                list = allReportsCache;
             }
-
-            let list = combinedList;
 
             // Set Header Title & Subtitle based on active view mode
             if (selectedDate && !searchText) {
@@ -1405,11 +1403,26 @@
 
         function getInitials(name) {
             if (!name) return "P";
-            const cleaned = name.replace(/^(mrs\.?|mr\.?|ms\.?|dr\.?)\s+/i, "").trim();
+            const cleaned = cleanNameHonorifics(name);
             const parts = cleaned.split(/\s+/).filter(Boolean);
             if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
             if (parts.length >= 2) return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
             return "P";
+        }
+
+        // 9. Render Patient Groups (Collapsible Accordion View)
+        function getSavedDocIdForPatient(fileId) {
+            if (!fileId || fileId === "—") return null;
+            if (patientDocBindingsMap.has(fileId)) {
+                return patientDocBindingsMap.get(fileId);
+            }
+            try {
+                const val = localStorage.getItem(`babyscan_patient_doc_${fileId}`);
+                patientDocBindingsMap.set(fileId, val);
+                return val;
+            } catch (e) {
+                return null;
+            }
         }
 
         // 9. Render Patient Groups (Collapsible Accordion View)
@@ -1421,25 +1434,26 @@
             }
 
             emptyState.classList.add("hidden");
-            patientGroupsContainer.innerHTML = "";
 
             const now = new Date();
             const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-            groups.forEach((group, pIdx) => {
+            const cardsHtml = groups.map((group, pIdx) => {
                 const is24hActive = new Date(group.created_at) >= twentyFourHoursAgo;
                 const initials = getInitials(group.patient_name);
 
-                // Determine pre-selected doctor:
-                const savedDocId = localStorage.getItem(`babyscan_patient_doc_${group.file_id}`);
+                // Determine pre-selected doctor using high-speed in-memory cache:
+                const savedDocId = getSavedDocIdForPatient(group.file_id);
                 let activeDocId = "";
                 let activePhone = "";
                 const reportDocName = group.referring_doctor || "";
 
-                if (savedDocId && referringDoctorsCache.some(d => d.id === savedDocId)) {
-                    activeDocId = savedDocId;
+                if (savedDocId) {
                     const found = referringDoctorsCache.find(d => d.id === savedDocId);
-                    if (found && found.phone) activePhone = found.phone;
+                    if (found) {
+                        activeDocId = savedDocId;
+                        if (found.phone) activePhone = found.phone;
+                    }
                 } else if (reportDocName) {
                     const matched = findDoctorInDirectory(reportDocName);
                     if (matched) {
@@ -1451,10 +1465,8 @@
                 // If doctor exists in report but not directory, we flag it so we can include it in dropdown
                 const isUnregisteredReportDoc = reportDocName && !activeDocId;
 
-                const card = document.createElement("div");
-                card.className = "bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden transition-all duration-200 hover:border-slate-300";
-
-                card.innerHTML = `
+                return `
+                    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden transition-all duration-200 hover:border-slate-300">
                     <!-- Patient Compact Header (Always Visible) -->
                     <div 
                         onclick="togglePatientAccordion(${pIdx})"
@@ -1641,10 +1653,10 @@
                             `).join('')}
                         </div>
                     </div>
-                `;
+                </div>`;
+            }).join('');
 
-                patientGroupsContainer.appendChild(card);
-            });
+            patientGroupsContainer.innerHTML = cardsHtml;
         }
 
         // Toggle Accordion for single patient
@@ -1744,7 +1756,7 @@
                 const zip = new JSZip();
                 let addedCount = 0;
 
-                for (const report of group.reports) {
+                const fetchPromises = group.reports.map(async (report) => {
                     try {
                         const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
                         const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
@@ -1758,11 +1770,19 @@
                         if (res.ok) {
                             const blob = await res.blob();
                             const fname = report.filename || `${report.file_id}_${report.study_type}.pdf`;
-                            zip.file(fname, blob);
-                            addedCount++;
+                            return { fname, blob };
                         }
                     } catch (e) {
                         console.warn("Could not fetch file for ZIP:", report.filename, e);
+                    }
+                    return null;
+                });
+
+                const fetchedFiles = await Promise.all(fetchPromises);
+                for (const file of fetchedFiles) {
+                    if (file) {
+                        zip.file(file.fname, file.blob);
+                        addedCount++;
                     }
                 }
 
@@ -1877,8 +1897,8 @@
             }
 
             try {
-                // Delete all files from Supabase Storage
-                for (const report of group.reports) {
+                // Delete all files from Supabase Storage concurrently
+                await Promise.all(group.reports.map(async (report) => {
                     if (report.storage_path) {
                         try {
                             const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
@@ -1893,7 +1913,7 @@
                             console.warn("Storage deletion error:", report.storage_path, e);
                         }
                     }
-                }
+                }));
 
                 // Delete all records for this patient from PostgreSQL
                 const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?file_id=eq.${encodeURIComponent(group.file_id)}`, {
@@ -1947,7 +1967,7 @@
                 const zip = new JSZip();
                 let addedCount = 0;
 
-                for (const report of filteredReports) {
+                const fetchPromises = filteredReports.map(async (report) => {
                     try {
                         const cleanPath = encodeURIComponent(report.storage_path).replace(/%2F/g, "/");
                         const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${cleanPath}?t=${Date.now()}`, {
@@ -1961,11 +1981,19 @@
                         if (res.ok) {
                             const blob = await res.blob();
                             const fname = report.filename || `${report.file_id}_${report.study_type}.pdf`;
-                            zip.file(fname, blob);
-                            addedCount++;
+                            return { fname, blob };
                         }
                     } catch (e) {
                         console.warn("Could not zip report:", report.filename, e);
+                    }
+                    return null;
+                });
+
+                const fetchedFiles = await Promise.all(fetchPromises);
+                for (const file of fetchedFiles) {
+                    if (file) {
+                        zip.file(file.fname, file.blob);
+                        addedCount++;
                     }
                 }
 
@@ -2059,18 +2087,17 @@
 
         function renderDoctorDirectoryList() {
             const query = (docDirectorySearch.value || "").trim().toLowerCase();
-            let list = [...referringDoctorsCache];
+            let list;
 
             if (query) {
-                list = list.filter(d => 
+                list = referringDoctorsCache.filter(d => 
                     (d.name || "").toLowerCase().includes(query) ||
                     (d.phone || "").toLowerCase().includes(query) ||
                     (d.hospital || "").toLowerCase().includes(query)
                 );
+            } else {
+                list = referringDoctorsCache;
             }
-
-            // Sort alphabetically by name
-            list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
             if (list.length === 0) {
                 docDirectoryList.innerHTML = `
@@ -2337,10 +2364,14 @@
             if (!rawName) return null;
             const normInput = normalizeDocName(rawName);
             if (!normInput) return null;
-            return referringDoctorsCache.find(d => {
-                const normExisting = normalizeDocName(d.name);
-                return normExisting === normInput || normExisting.includes(normInput) || normInput.includes(normExisting);
-            }) || null;
+            for (let i = 0; i < referringDoctorsCache.length; i++) {
+                const d = referringDoctorsCache[i];
+                const normExisting = d._normName || (d._normName = normalizeDocName(d.name));
+                if (normExisting === normInput || normExisting.includes(normInput) || normInput.includes(normExisting)) {
+                    return d;
+                }
+            }
+            return null;
         }
 
         async function autoBindDoctorPhoneToSupabase(docName, rawPhone, hospital = "") {
@@ -2430,12 +2461,10 @@
         function buildScanListSummary(reports) {
             if (!reports || reports.length === 0) return "Ultrasound Report";
 
-            // Sort scans in clinical priority order before constructing WhatsApp summary
-            const sortedReports = [...reports].sort(compareReportsByClinicalOrder);
             const titles = [];
             const seen = new Set();
 
-            sortedReports.forEach(r => {
+            reports.forEach(r => {
                 const s = (r.study_type || "").trim().toUpperCase();
                 let label = "";
 
@@ -2681,21 +2710,20 @@ Baby Scan Fetal Medicine Center`;
 
         function populateWhatsAppModalPdfList(group) {
             if (!waModalPdfList) return;
-            const rawReports = group.reports || [];
-            if (rawReports.length === 0) {
+            const reports = group.reports || [];
+            if (reports.length === 0) {
                 waModalPdfList.innerHTML = `<p class="text-xs text-slate-400 py-2">No PDF reports available.</p>`;
                 if (waModalScanCountBadge) waModalScanCountBadge.textContent = "No Scans";
                 return;
             }
 
-            const sortedReports = [...rawReports].sort(compareReportsByClinicalOrder);
             if (waModalScanCountBadge) {
-                waModalScanCountBadge.textContent = sortedReports.length > 1 
-                    ? `Combined PDF (${sortedReports.length} Scans)` 
+                waModalScanCountBadge.textContent = reports.length > 1 
+                    ? `Combined PDF (${reports.length} Scans)` 
                     : `1 Scan Report`;
             }
 
-            waModalPdfList.innerHTML = sortedReports.map((r) => {
+            waModalPdfList.innerHTML = reports.map((r) => {
                 const badgeClass = getStudyBadgeClass(r.study_type);
                 const label = getStudyTypeLabel(r.study_type);
                 const icon = getStudyIcon(r.study_type);
@@ -2855,7 +2883,7 @@ Baby Scan Fetal Medicine Center`;
 
         function getSelectedModalReports() {
             if (!currentWhatsAppPatientGroup) return [];
-            return [...(currentWhatsAppPatientGroup.reports || [])].sort(compareReportsByClinicalOrder);
+            return currentWhatsAppPatientGroup.reports || [];
         }
 
         function updateWhatsAppPreview() {
@@ -2875,12 +2903,11 @@ Baby Scan Fetal Medicine Center`;
         async function getPatientReportPdfForShare(patientGroup, reportsToShare) {
             const cleanPatientName = (patientGroup.patient_name || "Patient").replace(/[^a-zA-Z0-9]/g, '_');
             const fileId = (patientGroup.file_id && patientGroup.file_id !== "—") ? patientGroup.file_id : "REPORT";
-            const sortedReports = [...reportsToShare].sort(compareReportsByClinicalOrder);
 
-            if (sortedReports.length === 0) return null;
+            if (!reportsToShare || reportsToShare.length === 0) return null;
 
             // 1. If multi-scan report, fetch pre-merged COMPLETE_REPORT.pdf from Supabase Storage
-            if (sortedReports.length > 1 && fileId && fileId !== "REPORT") {
+            if (reportsToShare.length > 1 && fileId && fileId !== "REPORT") {
                 try {
                     const preMergedPath = `reports/${fileId}_COMPLETE_REPORT.pdf`;
                     const cleanPath = encodeURIComponent(preMergedPath).replace(/%2F/g, "/");
@@ -2905,7 +2932,7 @@ Baby Scan Fetal Medicine Center`;
             }
 
             // 2. Fetch single scan or fallback primary report directly from storage
-            const targetReport = sortedReports[0];
+            const targetReport = reportsToShare[0];
             if (targetReport && targetReport.storage_path) {
                 try {
                     const cleanPath = encodeURIComponent(targetReport.storage_path).replace(/%2F/g, "/");
@@ -2949,8 +2976,7 @@ Baby Scan Fetal Medicine Center`;
                     }
                 }
 
-                const rawReportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
-                const reportsToShare = [...rawReportsToShare].sort(compareReportsByClinicalOrder);
+                const reportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
                 const msg = generateWhatsAppMessage(patientGroup, doctorName, reportsToShare);
 
                 // Pre-copy WhatsApp text to clipboard so it is ready on mobile clipboard
@@ -3046,8 +3072,7 @@ Baby Scan Fetal Medicine Center`;
 
             } catch (err) {
                 console.error("WhatsApp share error:", err);
-                const rawReportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
-                const reportsToShare = [...rawReportsToShare].sort(compareReportsByClinicalOrder);
+                const reportsToShare = reportsOverride !== null ? reportsOverride : (patientGroup.reports || []);
                 const msg = generateWhatsAppMessage(patientGroup, doctorName, reportsToShare);
                 openWhatsAppUrl(phone, msg);
             } finally {
@@ -3234,7 +3259,9 @@ Baby Scan Fetal Medicine Center`;
             const rankA = getReportSortRank(a.study_type, a.filename);
             const rankB = getReportSortRank(b.study_type, b.filename);
             if (rankA !== rankB) return rankA - rankB;
-            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            const dateA = a.created_at || "";
+            const dateB = b.created_at || "";
+            return dateB.localeCompare(dateA);
         }
 
         function escapeHTML(str) {
