@@ -284,7 +284,7 @@
                                 <input 
                                     type="text" 
                                     id="searchFilter" 
-                                    oninput="applyFilterAndRender()"
+                                    oninput="onSearchInputChanged()"
                                     placeholder="Search by ID, Name, Scan..." 
                                     class="w-full pl-9 pr-3.5 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-babyscan-500"
                                 >
@@ -726,8 +726,12 @@
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhieGx6dXB0aXF5ZXlnd3lvdHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NDU5MDYsImV4cCI6MjEwNTIyMTkwNn0.PN3p4fhJ9UUPu4xwEJsRyLlYRCZhPiLxz43AABbuxP0";
         const SUPABASE_BUCKET = "patient-reports";
 
+        const REPORT_SELECT_FIELDS = "id,file_id,full_name,first_name,last_name,study_type,storage_path,filename,visit_date,referring_doctor,created_at";
+
         let currentSession = null;
         let allReportsCache = [];
+        let cloudSearchResults = [];
+        let searchDebounceTimer = null;
         let filteredReports = [];
         window.currentPatientGroups = [];
         let referringDoctorsCache = [];
@@ -989,7 +993,7 @@
             showLogin();
         }
 
-        // 5. Fetch All Reports for Doctor (30 Days)
+        // 5. Fetch Reports for Doctor (Targeted by Date or Active Archive)
         async function loadAllReports(showToastNotice = false) {
             if (!currentSession || !currentSession.access_token) {
                 showLogin();
@@ -997,15 +1001,34 @@
             }
 
             refreshIcon.classList.add("fa-spin");
-            patientGroupsContainer.innerHTML = `
-                <div class="py-12 text-center text-slate-400">
-                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
-                    <p class="text-xs font-semibold">Fetching latest patient reports from Supabase...</p>
-                </div>
-            `;
+            
+            // Only show full placeholder spinner on initial cold load to prevent UI flicker
+            if (!allReportsCache || allReportsCache.length === 0) {
+                patientGroupsContainer.innerHTML = `
+                    <div class="py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-babyscan-600"></i>
+                        <p class="text-xs font-semibold">Fetching latest patient reports from Supabase...</p>
+                    </div>
+                `;
+            }
 
             try {
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?order=created_at.desc`, {
+                const selectedDate = datePicker.value;
+                let queryUrl = "";
+
+                if (selectedDate) {
+                    // Query only the chosen date using local UTC window boundaries
+                    const dStart = new Date(`${selectedDate}T00:00:00`);
+                    const dEnd = new Date(`${selectedDate}T23:59:59.999`);
+                    const startIso = dStart.toISOString();
+                    const endIso = dEnd.toISOString();
+                    queryUrl = `${SUPABASE_URL}/rest/v1/patient_reports?select=${REPORT_SELECT_FIELDS}&created_at=gte.${startIso}&created_at=lte.${endIso}&order=created_at.desc`;
+                } else {
+                    // "All 30 Days" button clicked: limit to 300 active records to prevent memory lag
+                    queryUrl = `${SUPABASE_URL}/rest/v1/patient_reports?select=${REPORT_SELECT_FIELDS}&order=created_at.desc&limit=300`;
+                }
+
+                const res = await fetch(queryUrl, {
                     method: "GET",
                     cache: "no-store",
                     headers: {
@@ -1034,11 +1057,14 @@
                 }
 
                 allReportsCache = await res.json();
+                cloudSearchResults = [];
                 updateOverallStats();
                 applyFilterAndRender();
+                updateCloudArchiveCount();
 
                 if (showToastNotice) {
-                    showToast(`Refreshed! Loaded ${allReportsCache.length} scans from cloud.`);
+                    const countLabel = allReportsCache.length;
+                    showToast(`Refreshed! Loaded ${countLabel} scan${countLabel === 1 ? '' : 's'} for selected view.`);
                 }
 
             } catch (err) {
@@ -1054,10 +1080,8 @@
             }
         }
 
-        // 5. Statistics updates
+        // 5.1 Statistics updates
         function updateOverallStats() {
-            statTotalCount.textContent = allReportsCache.length;
-
             const now = new Date();
             const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -1065,7 +1089,31 @@
             statActive24hCount.textContent = active24h.length;
         }
 
-        // 6. Quick Date Button handlers
+        // 5.2 Background lightweight HEAD query for total 30-day count (0 data bandwidth)
+        async function updateCloudArchiveCount() {
+            if (!currentSession || !currentSession.access_token) return;
+            try {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/patient_reports?select=id`, {
+                    method: "HEAD",
+                    headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${currentSession.access_token}`,
+                        "Prefer": "count=exact"
+                    }
+                });
+                const cr = res.headers.get("content-range");
+                if (cr && cr.includes("/")) {
+                    const total = cr.split("/")[1];
+                    if (total && total !== "*") {
+                        statTotalCount.textContent = total;
+                    }
+                }
+            } catch (e) {
+                console.warn("Total count check notice:", e);
+            }
+        }
+
+        // 6. Quick Date Button handlers (Loads selected date on-demand)
         function setFilterDate(type) {
             if (type === 'today') {
                 datePicker.value = getTodayString();
@@ -1079,11 +1127,59 @@
             } else if (type === 'all') {
                 datePicker.value = '';
             }
-            applyFilterAndRender();
+            loadAllReports(false);
         }
 
         function onDateChanged() {
+            loadAllReports(false);
+        }
+
+        // 6.1 Smart Search Input with Debounced Cloud Fallback
+        function onSearchInputChanged() {
+            const q = (searchFilter.value || "").trim();
+            if (!q) {
+                cloudSearchResults = [];
+                applyFilterAndRender();
+                return;
+            }
+
+            // 1. Instant local search on loaded records (0ms)
             applyFilterAndRender();
+
+            // 2. Debounce cloud lookup for past 30-day patient searches
+            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+            if (q.length >= 2) {
+                searchDebounceTimer = setTimeout(async () => {
+                    await performCloudSearch(q);
+                }, 350);
+            }
+        }
+
+        async function performCloudSearch(query) {
+            if (!currentSession || !currentSession.access_token) return;
+            try {
+                const safeQ = encodeURIComponent(query);
+                const res = await fetch(
+                    `${SUPABASE_URL}/rest/v1/patient_reports?select=${REPORT_SELECT_FIELDS}&or=(file_id.ilike.%25${safeQ}%25,full_name.ilike.%25${safeQ}%25,first_name.ilike.%25${safeQ}%25,last_name.ilike.%25${safeQ}%25)&order=created_at.desc&limit=30`,
+                    {
+                        method: "GET",
+                        headers: {
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": `Bearer ${currentSession.access_token}`,
+                            "Accept": "application/json"
+                        }
+                    }
+                );
+                if (res.ok) {
+                    const cloudData = await res.json();
+                    if (cloudData && cloudData.length > 0) {
+                        cloudSearchResults = cloudData;
+                        applyFilterAndRender();
+                    }
+                }
+            } catch (e) {
+                console.warn("Cloud search lookup note:", e);
+            }
         }
 
         function cleanNameHonorifics(rawName) {
@@ -1208,21 +1304,36 @@
             const selectedDate = datePicker.value; // 'YYYY-MM-DD' or ''
             const searchText = (searchFilter.value || "").trim().toLowerCase();
 
-            let list = [...allReportsCache];
+            // Combine allReportsCache with any cloudSearchResults, deduping by id
+            const seenIds = new Set();
+            const combinedList = [];
 
-            // Filter by Date if chosen
-            if (selectedDate) {
+            for (const r of allReportsCache) {
+                if (!seenIds.has(r.id)) {
+                    seenIds.add(r.id);
+                    combinedList.push(r);
+                }
+            }
+
+            if (searchText && cloudSearchResults.length > 0) {
+                for (const r of cloudSearchResults) {
+                    if (!seenIds.has(r.id)) {
+                        seenIds.add(r.id);
+                        combinedList.push(r);
+                    }
+                }
+            }
+
+            let list = combinedList;
+
+            // Set Header Title & Subtitle based on active view mode
+            if (selectedDate && !searchText) {
                 const [selYear, selMonth, selDay] = selectedDate.split('-');
-                const formattedDDMMYYYY = `${selDay}/${selMonth}/${selYear}`;
-                const formattedDASH = `${selDay}-${selMonth}-${selYear}`;
-
-                list = list.filter(r => {
-                    if (r.visit_date && (r.visit_date.includes(formattedDDMMYYYY) || r.visit_date.includes(formattedDASH))) return true;
-                    if (r.created_at && r.created_at.startsWith(selectedDate)) return true;
-                    return false;
-                });
                 tableHeaderTitle.textContent = `Ultrasound Reports (${selDay}/${selMonth}/${selYear})`;
                 tableHeaderSubtitle.textContent = `Viewing patient records from ${selDay}/${selMonth}/${selYear}`;
+            } else if (searchText) {
+                tableHeaderTitle.textContent = `Search Results (Active + Cloud Archive)`;
+                tableHeaderSubtitle.textContent = `Matching patient records for "${searchFilter.value.trim()}"`;
             } else {
                 tableHeaderTitle.textContent = `All Ultrasound Reports (30 Days)`;
                 tableHeaderSubtitle.textContent = `Viewing patient records across active 30-day cloud archive`;
@@ -1232,9 +1343,10 @@
             if (searchText) {
                 list = list.filter(r => {
                     const id = (r.file_id || "").toLowerCase();
-                    const name = (r.full_name || `${r.first_name} ${r.last_name}`).toLowerCase();
+                    const name = (r.full_name || `${r.first_name || ""} ${r.last_name || ""}`).toLowerCase();
                     const study = (r.study_type || "").toLowerCase();
-                    return id.includes(searchText) || name.includes(searchText) || study.includes(searchText);
+                    const doc = (r.referring_doctor || "").toLowerCase();
+                    return id.includes(searchText) || name.includes(searchText) || study.includes(searchText) || doc.includes(searchText);
                 });
             }
 
